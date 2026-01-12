@@ -2,15 +2,10 @@ import requests
 import pandas as pd
 import streamlit as st
 
-API_BASE = "http://localhost:8000"
+st.set_page_config(page_title="Gestionale Elenchi", layout="wide")
 
-st.set_page_config(
-    page_title="Gestionale Elenchi",
-    layout="wide"
-)
-
-token = st.query_params.get("token", "")
-API_BASE = st.secrets["API_BASE"]
+token = (st.query_params.get("token", "") or "").strip()
+API_BASE = st.secrets.get("API_BASE", "http://localhost:8000")
 
 
 st.title("Gestionale Elenchi")
@@ -21,11 +16,14 @@ st.caption("Consultazione elenchi – accesso riservato (WordPress)")
 # =========================
 with st.sidebar:
     st.header("Autenticazione")
-    token = st.text_area(
-        "Token (Bearer)",
-        height=120,
-        help="In produzione arriverà automaticamente da WordPress"
-    )
+
+    if not token:
+        st.warning("Accesso solo tramite WordPress.")
+        st.caption("Se stai sviluppando in locale, puoi incollare manualmente un token.")
+        token = st.text_area("Token (Bearer)", height=120)
+        token = (token or "").strip()
+    else:
+        st.success("Sessione autenticata via WordPress")
 
     st.divider()
     st.header("Filtri")
