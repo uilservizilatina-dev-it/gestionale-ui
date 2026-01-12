@@ -9,6 +9,9 @@ st.set_page_config(
     layout="wide"
 )
 
+token = st.query_params.get("token", "")
+API_BASE = st.secrets["API_BASE"]
+
 
 st.title("Gestionale Elenchi")
 st.caption("Consultazione elenchi – accesso riservato (WordPress)")
