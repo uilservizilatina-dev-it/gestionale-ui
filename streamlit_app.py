@@ -1,4 +1,6 @@
 import requests
+import io
+import time
 import pandas as pd
 import streamlit as st
 
@@ -82,18 +84,60 @@ if role == "administrator":
     st.subheader("Upload Excel (solo Admin)")
 
     up = st.file_uploader("Carica file Excel (.xlsx)", type=["xlsx"])
-    mode = st.selectbox("Modalità import", ["replace", "append"], index=0)
+    mode = st.selectbox("Modalità import", ["replace"], index=0)
 
     if up is not None and st.button("Importa nel database"):
-        with st.spinner("Import in corso..."):
-            files = {"file": (up.name, up.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+        # 1) Conversione Excel -> CSV (CLIENT SIDE)
+        with st.spinner("Conversione Excel → CSV..."):
+            df = pd.read_excel(up, dtype=str)
+            csv_bytes = df.to_csv(index=False).encode("utf-8")
+
+        # 2) Invio CSV al backend (job async)
+        with st.spinner("Invio CSV al backend..."):
+            files = {
+                "file": ("elenchi.csv", csv_bytes, "text/csv")
+            }
             r = requests.post(
                 f"{API_BASE}/admin/import",
                 headers=auth_headers(token),
                 files=files,
                 data={"mode": mode},
-                timeout=600
+                timeout=120
             )
+
+        if r.status_code != 202:
+            st.error(f"Errore import ({r.status_code}): {r.text}")
+            st.stop()
+
+        job_id = r.json()["job_id"]
+        st.success(f"Import avviato. Job ID: {job_id}")
+
+        # 3) Polling stato job
+        with st.spinner("Import in corso..."):
+            for _ in range(600):  # ~10 minuti
+                s = requests.get(
+                    f"{API_BASE}/admin/import/status",
+                    headers=auth_headers(token),
+                    params={"job_id": job_id},
+                    timeout=30
+                )
+
+                if s.status_code != 200:
+                    st.error(f"Errore stato ({s.status_code}): {s.text}")
+                    st.stop()
+
+                js = s.json()
+                st.info(f"Stato: {js['status']} | Righe: {js.get('inserted_rows')}")
+
+                if js["status"] == "done":
+                    st.success(f"Import completato! Righe inserite: {js.get('inserted_rows')}")
+                    break
+
+                if js["status"] == "error":
+                    st.error(f"Import fallito: {js.get('error')}")
+                    break
+
+                time.sleep(1)
         if r.status_code == 401:
             st.error("Sessione scaduta: torna alla pagina WordPress e riapri il gestionale.")
             st.stop()
