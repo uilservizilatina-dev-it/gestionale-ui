@@ -75,6 +75,33 @@ if not token.strip():
 # =========================
 who = api_get("/auth/whoami", token)
 
+role = (who.get("role") or "").lower()
+
+if role == "administrator":
+    st.divider()
+    st.subheader("Upload Excel (solo Admin)")
+
+    up = st.file_uploader("Carica file Excel (.xlsx)", type=["xlsx"])
+    mode = st.selectbox("Modalità import", ["replace", "append"], index=0)
+
+    if up is not None and st.button("Importa nel database"):
+        with st.spinner("Import in corso..."):
+            files = {"file": (up.name, up.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+            r = requests.post(
+                f"{API_BASE}/admin/import",
+                headers=auth_headers(token),
+                files=files,
+                data={"mode": mode},
+                timeout=600
+            )
+        if r.status_code == 401:
+            st.error("Sessione scaduta: torna alla pagina WordPress e riapri il gestionale.")
+            st.stop()
+        if r.status_code == 200:
+            st.success(f"Import completato: {r.json()}")
+        else:
+            st.error(f"Errore import ({r.status_code}): {r.text}")
+
 st.success(
     f"Utente: **{who['username']}** | "
     f"Ruolo: **{who['role']}** | "

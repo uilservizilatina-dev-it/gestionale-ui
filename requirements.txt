@@ -2,3 +2,6 @@ fastapi
 uvicorn
 psycopg[binary]
 python-dotenv
+pandas
+openpyxl
+python-multipart
