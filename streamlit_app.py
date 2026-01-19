@@ -1,5 +1,4 @@
 import time
-import io
 import requests
 import pandas as pd
 import streamlit as st
@@ -145,42 +144,64 @@ regione = who.get("regione")
 st.info(f"Utente: {who.get('username')} — Ruolo: {role or 'n/a'} — Regione: {regione or 'n/a'}")
 
 # =========================
-# FACETS (cached)
+# FACETS (cached) - con conteggi
 # =========================
 @st.cache_data(ttl=600, show_spinner=False)
-def get_province(tok: str):
+def get_province_with_counts(tok: str):
     js = api_get("/auth/province", tok)
-    return [x["provincia"] for x in js.get("items", []) if x.get("provincia")]
+    out = []
+    for x in js.get("items", []):
+        p = x.get("provincia")
+        c = x.get("count", 0)
+        if p:
+            out.append((p, int(c) if c is not None else 0))
+    return out
 
 @st.cache_data(ttl=600, show_spinner=False)
-def get_comuni_for_prov(tok: str, prov: str):
+def get_comuni_for_prov_with_counts(tok: str, prov: str):
     js = api_get("/auth/comuni", tok, params={"provincia": prov})
-    return [x["comune"] for x in js.get("items", []) if x.get("comune")]
+    out = []
+    for x in js.get("items", []):
+        c = x.get("comune")
+        n = x.get("count", 0)
+        if c:
+            out.append((c, int(n) if n is not None else 0))
+    return out
 
 @st.cache_data(ttl=600, show_spinner=False)
-def get_province_nascita(tok: str):
+def get_province_nascita_with_counts(tok: str):
     js = api_get("/auth/province-nascita", tok)
-    return [x["prov_nascita"] for x in js.get("items", []) if x.get("prov_nascita")]
+    out = []
+    for x in js.get("items", []):
+        p = x.get("prov_nascita")
+        c = x.get("count", 0)
+        if p:
+            out.append((p, int(c) if c is not None else 0))
+    return out
 
 @st.cache_data(ttl=600, show_spinner=False)
-def get_comuni_nascita_for_prov(tok: str, prov_n: str):
+def get_comuni_nascita_for_prov_with_counts(tok: str, prov_n: str):
     js = api_get("/auth/comuni-nascita", tok, params={"prov_nascita": prov_n})
-    return [x["comune_nascita"] for x in js.get("items", []) if x.get("comune_nascita")]
-    
+    out = []
+    for x in js.get("items", []):
+        c = x.get("comune_nascita")
+        n = x.get("count", 0)
+        if c:
+            out.append((c, int(n) if n is not None else 0))
+    return out
+
+# =========================
+# COUNT totale (cached)
+# =========================
 @st.cache_data(ttl=30, show_spinner=False)
 def cached_count(tok: str, params: dict):
-    # params potrebbe contenere liste: Streamlit cache va bene, ma serve renderlo hashabile
-    # trasformo liste in tuple
+    # rende hashabile per la cache
     safe = {}
     for k, v in params.items():
-        if isinstance(v, list):
-            safe[k] = tuple(v)
-        else:
-            safe[k] = v
-    # ricostruisco dict “reale” per la request
+        safe[k] = tuple(v) if isinstance(v, list) else v
     real = {k: (list(v) if isinstance(v, tuple) else v) for k, v in safe.items()}
     js = api_get("/auth/count", tok, params=real)
-    return int(js.get("total", 0))    
+    return int(js.get("total", 0))
 
 # =========================
 # FILTRI (sidebar)
@@ -189,43 +210,73 @@ with st.sidebar:
     st.divider()
     st.header("Filtri")
 
-    province_opts = get_province(token)
-    selected_province = st.multiselect("Provincia", options=province_opts, default=[])
+    # 1) Residenza: Province (con count)
+    prov_items = get_province_with_counts(token)
+    selected_province_items = st.multiselect(
+        "Provincia",
+        options=prov_items,
+        default=[],
+        format_func=lambda t: f"{t[0]} ({t[1]:,})",
+    )
+    selected_province = [p for (p, _) in selected_province_items]
 
-    comuni_opts = []
+    # 2) Residenza: Comuni (dipende dalle province selezionate) + count
+    comuni_items = []
     if selected_province:
-        s = set()
+        seen = {}
         for p in selected_province:
-            for c in get_comuni_for_prov(token, p):
-                s.add(c)
-        comuni_opts = sorted(s)
-    selected_comuni = st.multiselect("Comune", options=comuni_opts, default=[])
-    
+            for c, n in get_comuni_for_prov_with_counts(token, p):
+                # se un comune appare in più province (raro), sommo i count per presentazione
+                seen[c] = seen.get(c, 0) + int(n)
+        comuni_items = sorted(seen.items(), key=lambda x: x[0])
+
+    selected_comuni_items = st.multiselect(
+        "Comune",
+        options=comuni_items,
+        default=[],
+        format_func=lambda t: f"{t[0]} ({t[1]:,})",
+    )
+    selected_comuni = [c for (c, _) in selected_comuni_items]
+
     st.divider()
 
-    # Provincia/Comune di nascita: ha senso solo se nat_choice == "Tutti"
+    # 3) Prima definisco sesso/nazionalità (così posso usarli subito dopo senza NameError)
+    sex_choice = st.selectbox("Sesso", ["Tutti", "Maschi", "Femmine"], index=0)
+    nat_choice = st.selectbox("Italiano / Estero (Prov. nascita = EE)", ["Tutti", "Italiano", "Estero"], index=0)
+
+    st.divider()
+
+    # 4) Nascita: la mostro SOLO se nat_choice == "Tutti" (macro-gruppo)
     selected_prov_nasc = []
     selected_com_nasc = []
 
     if nat_choice == "Tutti":
-        prov_n_opts = get_province_nascita(token)
-        selected_prov_nasc = st.multiselect("Provincia di nascita", options=prov_n_opts, default=[])
+        prov_n_items = get_province_nascita_with_counts(token)
+        selected_prov_nasc_items = st.multiselect(
+            "Provincia di nascita",
+            options=prov_n_items,
+            default=[],
+            format_func=lambda t: f"{t[0]} ({t[1]:,})",
+        )
+        selected_prov_nasc = [p for (p, _) in selected_prov_nasc_items]
 
-        com_n_opts = []
+        com_n_items = []
         if selected_prov_nasc:
-            s = set()
+            seen = {}
             for p in selected_prov_nasc:
-                for c in get_comuni_nascita_for_prov(token, p):
-                    s.add(c)
-            com_n_opts = sorted(s)
+                for c, n in get_comuni_nascita_for_prov_with_counts(token, p):
+                    seen[c] = seen.get(c, 0) + int(n)
+            com_n_items = sorted(seen.items(), key=lambda x: x[0])
 
-        selected_com_nasc = st.multiselect("Comune di nascita", options=com_n_opts, default=[])
+        selected_com_nasc_items = st.multiselect(
+            "Comune di nascita",
+            options=com_n_items,
+            default=[],
+            format_func=lambda t: f"{t[0]} ({t[1]:,})",
+        )
+        selected_com_nasc = [c for (c, _) in selected_com_nasc_items]
     else:
-        st.caption("Provincia di nascita disabilitata: già determinata dal filtro Italiano/Estero.")
-
-    st.divider()
-    sex_choice = st.selectbox("Sesso", ["Tutti", "Maschi", "Femmine"], index=0)
-    nat_choice = st.selectbox("Italiano / Estero (Prov. nascita = EE)", ["Tutti", "Italiano", "Estero"], index=0)
+        st.caption("Provincia/Comune di nascita disabilitati: già determinati dal filtro Italiano/Estero.")
 
 # =========================
 # ADMIN: Upload Excel -> Import
@@ -253,7 +304,7 @@ if role == "administrator":
             st.write("Stato import (polling):")
             status_box = st.empty()
 
-            for _ in range(120):  # ~2 minuti (con sleep 1s)
+            for _ in range(120):
                 js = api_get("/admin/import/status", token, params={"job_id": job_id})
                 status = js.get("status")
                 inserted = js.get("inserted_rows")
@@ -275,26 +326,31 @@ params = {
     "offset": int(offset),
 }
 
+# residenza
 if selected_province:
     params["provincia"] = selected_province
 if selected_comuni:
     params["comune"] = selected_comuni
 
+# nascita (solo se nat_choice == Tutti)
 if selected_prov_nasc:
     params["prov_nascita"] = selected_prov_nasc
 if selected_com_nasc:
     params["com_nascita"] = selected_com_nasc
 
+# sesso
 if sex_choice == "Maschi":
     params["sesso"] = "M"
 elif sex_choice == "Femmine":
     params["sesso"] = "F"
 
+# italiano/estero (macro)
 if nat_choice == "Estero":
     params["nato_estero"] = True
 elif nat_choice == "Italiano":
     params["nato_estero"] = False
 
+# Totale righe aggiornato (senza limit/offset)
 count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
 total_rows = cached_count(token, count_params)
 st.write(f"Totale righe trovate (con questi filtri): {total_rows:,}")
