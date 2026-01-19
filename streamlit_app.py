@@ -166,6 +166,21 @@ def get_province_nascita(tok: str):
 def get_comuni_nascita_for_prov(tok: str, prov_n: str):
     js = api_get("/auth/comuni-nascita", tok, params={"prov_nascita": prov_n})
     return [x["comune_nascita"] for x in js.get("items", []) if x.get("comune_nascita")]
+    
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_count(tok: str, params: dict):
+    # params potrebbe contenere liste: Streamlit cache va bene, ma serve renderlo hashabile
+    # trasformo liste in tuple
+    safe = {}
+    for k, v in params.items():
+        if isinstance(v, list):
+            safe[k] = tuple(v)
+        else:
+            safe[k] = v
+    # ricostruisco dict “reale” per la request
+    real = {k: (list(v) if isinstance(v, tuple) else v) for k, v in safe.items()}
+    js = api_get("/auth/count", tok, params=real)
+    return int(js.get("total", 0))    
 
 # =========================
 # FILTRI (sidebar)
@@ -185,20 +200,28 @@ with st.sidebar:
                 s.add(c)
         comuni_opts = sorted(s)
     selected_comuni = st.multiselect("Comune", options=comuni_opts, default=[])
-
+    
     st.divider()
 
-    prov_n_opts = get_province_nascita(token)
-    selected_prov_nasc = st.multiselect("Provincia di nascita", options=prov_n_opts, default=[])
+    # Provincia/Comune di nascita: ha senso solo se nat_choice == "Tutti"
+    selected_prov_nasc = []
+    selected_com_nasc = []
 
-    com_n_opts = []
-    if selected_prov_nasc:
-        s = set()
-        for p in selected_prov_nasc:
-            for c in get_comuni_nascita_for_prov(token, p):
-                s.add(c)
-        com_n_opts = sorted(s)
-    selected_com_nasc = st.multiselect("Comune di nascita", options=com_n_opts, default=[])
+    if nat_choice == "Tutti":
+        prov_n_opts = get_province_nascita(token)
+        selected_prov_nasc = st.multiselect("Provincia di nascita", options=prov_n_opts, default=[])
+
+        com_n_opts = []
+        if selected_prov_nasc:
+            s = set()
+            for p in selected_prov_nasc:
+                for c in get_comuni_nascita_for_prov(token, p):
+                    s.add(c)
+            com_n_opts = sorted(s)
+
+        selected_com_nasc = st.multiselect("Comune di nascita", options=com_n_opts, default=[])
+    else:
+        st.caption("Provincia di nascita disabilitata: già determinata dal filtro Italiano/Estero.")
 
     st.divider()
     sex_choice = st.selectbox("Sesso", ["Tutti", "Maschi", "Femmine"], index=0)
@@ -271,6 +294,10 @@ if nat_choice == "Estero":
     params["nato_estero"] = True
 elif nat_choice == "Italiano":
     params["nato_estero"] = False
+
+count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+total_rows = cached_count(token, count_params)
+st.write(f"Totale righe trovate (con questi filtri): {total_rows:,}")
 
 with st.spinner("Caricamento dati..."):
     data = api_get("/auth/search", token, params=params)
