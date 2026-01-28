@@ -5,6 +5,7 @@ import streamlit as st
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from datetime import datetime
 
 st.set_page_config(page_title="Gestionale Elenchi", layout="wide")
 
@@ -97,6 +98,22 @@ def api_post_multipart(path: str, tok: str, files=None, data=None):
         st.error(f"Errore API {r.status_code}: {r.text[:800]}")
         st.stop()
     return r.json()
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_anni_inserimento(tok: str):
+    js = api_get("/auth/anni-inserimento", tok)
+    return [(x["anno"], x["count"]) for x in js.get("items", []) if x.get("anno") is not None]
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_regioni(tok: str):
+    js = api_get("/auth/regioni", tok)
+    out = []
+    for x in js.get("items", []):
+        r = x.get("regione")
+        c = x.get("count", 0)
+        if r:
+            out.append((r, int(c) if c is not None else 0))
+    return out
 
 # =========================
 # SIDEBAR (auth + paginazione)
@@ -250,7 +267,30 @@ with st.sidebar:
     selected_prov_nasc = []
     selected_com_nasc = []
 
-    if nat_choice == "Tutti":
+    prov_n_items = []
+    com_n_items = []
+
+    if nat_choice == "Estero":
+        st.caption("Estero: Provincia di nascita forzata a EE. Puoi filtrare per Comune di nascita (se presente).")
+        # provincia nascita forzata
+        selected_prov_nasc = ["EE"]
+
+        # carico i comuni per EE
+        seen = {}
+        for c, n in get_comuni_nascita_for_prov_with_counts(token, "EE"):
+            seen[c] = seen.get(c, 0) + int(n)
+        com_n_items = sorted(seen.items(), key=lambda x: x[0])
+
+        selected_com_nasc_items = st.multiselect(
+            "Comune di nascita",
+            options=com_n_items,
+            default=[],
+            format_func=lambda t: f"{t[0]} ({t[1]:,})",
+        )
+        selected_com_nasc = [c for (c, _) in selected_com_nasc_items]
+
+    else:
+        # Tutti o Italiano: filtri nascita normali (provincia -> comuni)
         prov_n_items = get_province_nascita_with_counts(token)
         selected_prov_nasc_items = st.multiselect(
             "Provincia di nascita",
@@ -260,7 +300,6 @@ with st.sidebar:
         )
         selected_prov_nasc = [p for (p, _) in selected_prov_nasc_items]
 
-        com_n_items = []
         if selected_prov_nasc:
             seen = {}
             for p in selected_prov_nasc:
@@ -275,8 +314,28 @@ with st.sidebar:
             format_func=lambda t: f"{t[0]} ({t[1]:,})",
         )
         selected_com_nasc = [c for (c, _) in selected_com_nasc_items]
-    else:
-        st.caption("Provincia/Comune di nascita disabilitati: già determinati dal filtro Italiano/Estero.")
+
+    
+    # 5) Anno inserimento: filtro per anno inserimento
+    anni_items = get_anni_inserimento(token)
+    selected_anni_items = st.multiselect(
+        "Anno inserimento",
+        options=anni_items,
+        default=[],
+        format_func=lambda t: f"{t[0]} ({t[1]:,})",
+    )
+    selected_anni = [a for (a, _) in selected_anni_items]
+   
+    # 6) Regione: filtro regione
+    reg_items = get_regioni(token)
+
+    selected_region_items = st.multiselect(
+        "Regione",
+        options=reg_items,
+        default=[],
+        format_func=lambda t: f"{t[0]} ({t[1]:,})" if t[1] else f"{t[0]}",
+    )
+    selected_region = [r for (r, _) in selected_region_items]
 
 # =========================
 # ADMIN: Upload Excel -> Import
@@ -291,6 +350,8 @@ if role == "administrator":
     if up is not None and st.button("Importa nel database"):
         with st.spinner("Conversione Excel → CSV"):
             df_x = pd.read_excel(up, dtype=str)
+            anno = datetime.now().year
+            df_x["anno_inserimento"] = anno
             csv_bytes = df_x.to_csv(index=False).encode("utf-8")
 
         with st.spinner("Invio CSV al backend (job async)"):
@@ -326,6 +387,10 @@ params = {
     "offset": int(offset),
 }
 
+#regione
+if selected_region:
+    params["regione"] = selected_region
+
 # residenza
 if selected_province:
     params["provincia"] = selected_province
@@ -349,6 +414,10 @@ if nat_choice == "Estero":
     params["nato_estero"] = True
 elif nat_choice == "Italiano":
     params["nato_estero"] = False
+    
+#anno di inserimento
+if selected_anni:
+    params["anno_ins"] = selected_anni
 
 # Totale righe aggiornato (senza limit/offset)
 count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
@@ -369,4 +438,35 @@ st.write(f"Record in pagina: {len(df):,} (page_size={page_size}, page={page_numb
 if df.empty:
     st.warning("Nessun record trovato con i filtri correnti.")
 else:
-    st.dataframe(df, use_container_width=True)
+    # =========================
+    # DOWNLOAD: regole
+    # - admin: sempre (anche nazionale)
+    # - non-admin: solo se filtro Regione attivo ed è la sua
+    # =========================
+    is_admin = (role == "administrator")
+
+    can_download = False
+    if is_admin:
+        can_download = True
+    else:
+        can_download = (len(selected_region) == 1 and selected_region[0] == (regione or "").upper())
+
+    if df.empty:
+        st.warning("Nessun record trovato con i filtri correnti.")
+    else:
+        if can_download:
+            # toolbar (download) ok
+            st.dataframe(df, use_container_width=True)
+
+            # (opzionale) download esplicito CSV
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Scarica CSV",
+                data=csv,
+                file_name="elenchi_filtrati.csv",
+                mime="text/csv",
+            )
+        else:
+            # NO toolbar => NO download
+            st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
+            st.table(df)
