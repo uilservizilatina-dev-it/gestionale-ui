@@ -487,8 +487,30 @@ else:
     if df.empty:
         st.warning("Nessun record trovato con i filtri correnti.")
     else:
+        # =========================
+        # DOWNLOAD: regole
+        # - admin: sempre (anche nazionale)
+        # - non-admin: solo se filtro Regione attivo ed è la sua
+        # =========================
+        is_admin = (role == "administrator")
+
+        can_download = False
+        if is_admin:
+            can_download = True
+        else:
+            can_download = (len(selected_region) == 1 and selected_region[0] == (regione or "").upper())
+
+        # 1) TABella: sempre visibile
+        if is_admin or can_download:
+            # toolbar ok (admin può scaricare anche nazionale)
+            st.dataframe(df, use_container_width=True, height=600)
+        else:
+            # NO toolbar => NO download
+            st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
+            st.table(df)
+
+        # 2) Download CSV completo (solo se consentito)
         if can_download:
-            # Download CSV COMPLETO (tutti i risultati filtrati, non solo la pagina)
             export_params = dict(params)
             export_params.pop("limit", None)
             export_params.pop("offset", None)
@@ -501,7 +523,3 @@ else:
                 file_name="elenchi_export.csv",
                 mime="text/csv",
             )
-        else:
-            # NO toolbar => NO download
-            st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
-            st.table(df)
