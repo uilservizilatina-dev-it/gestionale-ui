@@ -71,6 +71,34 @@ def api_get(path: str, tok: str, params=None):
         st.stop()
     return r.json()
 
+def api_get_raw(path: str, tok: str, params=None) -> bytes:
+    s = get_session()
+    try:
+        r = s.get(
+            f"{API_BASE}{path}",
+            headers=auth_headers(tok),
+            params=params,
+            timeout=(10, 300),
+        )
+    except requests.exceptions.ConnectTimeout:
+        st.error("API non raggiungibile (connect timeout).")
+        st.stop()
+    except requests.exceptions.ReadTimeout:
+        st.error("Timeout durante il download (read timeout).")
+        st.stop()
+    except requests.RequestException as e:
+        st.error(f"Errore rete durante download: {e}")
+        st.stop()
+
+    if r.status_code == 401:
+        st.error("Token non valido o scaduto.")
+        st.stop()
+    if r.status_code >= 400:
+        st.error(f"Errore API {r.status_code}: {r.text[:800]}")
+        st.stop()
+
+    return r.content
+
 def api_post_multipart(path: str, tok: str, files=None, data=None):
     s = get_session()
     try:
@@ -292,6 +320,11 @@ with st.sidebar:
     else:
         # Tutti o Italiano: filtri nascita normali (provincia -> comuni)
         prov_n_items = get_province_nascita_with_counts(token)
+        # Se Italiano, rimuovi EE dalle opzioni selezionabili
+        if nat_choice == "Italiano":
+            prov_n_items = [t for t in prov_n_items if (t[0] or "").upper() != "EE"]
+            selected_prov_nasc = [p for p in selected_prov_nasc if p.upper() != "EE"]
+
         selected_prov_nasc_items = st.multiselect(
             "Provincia di nascita",
             options=prov_n_items,
@@ -455,15 +488,17 @@ else:
         st.warning("Nessun record trovato con i filtri correnti.")
     else:
         if can_download:
-            # toolbar (download) ok
-            st.dataframe(df, use_container_width=True)
+            # Download CSV COMPLETO (tutti i risultati filtrati, non solo la pagina)
+            export_params = dict(params)
+            export_params.pop("limit", None)
+            export_params.pop("offset", None)
 
-            # (opzionale) download esplicito CSV
-            csv = df.to_csv(index=False).encode("utf-8")
+            csv_bytes = api_get_raw("/auth/export", token, params=export_params)
+
             st.download_button(
-                "Scarica CSV",
-                data=csv,
-                file_name="elenchi_filtrati.csv",
+                "Scarica CSV (tutti i risultati filtrati)",
+                data=csv_bytes,
+                file_name="elenchi_export.csv",
                 mime="text/csv",
             )
         else:
