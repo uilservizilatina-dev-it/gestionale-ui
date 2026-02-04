@@ -244,7 +244,6 @@ def cached_count(tok: str, params: dict):
 # FILTRI (sidebar)
 # =========================
 with st.sidebar:
-    st.divider()
     st.header("Filtri")
     
     # 6) Regione: filtro regione
