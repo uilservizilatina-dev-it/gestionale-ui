@@ -147,9 +147,9 @@ def get_regioni(tok: str):
 # SIDEBAR (auth)
 # =========================
 with st.sidebar:
-    st.header("Autenticazione")
 
     if not token:
+        st.header("Autenticazione")
         st.warning("Accesso solo tramite WordPress.")
         st.caption("In locale puoi incollare manualmente un token.")
         token = st.text_area("Token (Bearer)", height=120)
