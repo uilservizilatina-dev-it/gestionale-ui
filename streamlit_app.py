@@ -144,7 +144,7 @@ def get_regioni(tok: str):
     return out
 
 # =========================
-# SIDEBAR (auth + paginazione)
+# SIDEBAR (auth)
 # =========================
 with st.sidebar:
     st.header("Autenticazione")
@@ -154,18 +154,10 @@ with st.sidebar:
         st.caption("In locale puoi incollare manualmente un token.")
         token = st.text_area("Token (Bearer)", height=120)
         token = (token or "").strip()
-    else:
-        st.success("Sessione autenticata via WordPress")
+    #else:
+        #st.success("Sessione autenticata via WordPress")
 
     st.divider()
-    st.header("Paginazione")
-
-    page_size = st.selectbox(
-        "Righe per pagina",
-        options=[50, 100, 200, 500, 1000],
-        index=1,
-    )
-    page_number = st.number_input("Pagina", min_value=0, value=0, step=1)
 
 if not token:
     st.warning("Inserisci un token valido per iniziare.")
@@ -254,6 +246,17 @@ def cached_count(tok: str, params: dict):
 with st.sidebar:
     st.divider()
     st.header("Filtri")
+    
+    # 6) Regione: filtro regione
+    reg_items = get_regioni(token)
+
+    selected_region_items = st.multiselect(
+        "Regione",
+        options=reg_items,
+        default=[],
+        format_func=lambda t: f"{t[0]} ({t[1]:,})" if t[1] else f"{t[0]}",
+    )
+    selected_region = [r for (r, _) in selected_region_items]
 
     # 1) Residenza: Province (con count)
     prov_items = get_province_with_counts(token)
@@ -348,6 +351,7 @@ with st.sidebar:
         )
         selected_com_nasc = [c for (c, _) in selected_com_nasc_items]
 
+    st.divider()
     
     # 5) Anno inserimento: filtro per anno inserimento
     anni_items = get_anni_inserimento(token)
@@ -358,17 +362,21 @@ with st.sidebar:
         format_func=lambda t: f"{t[0]} ({t[1]:,})",
     )
     selected_anni = [a for (a, _) in selected_anni_items]
-   
-    # 6) Regione: filtro regione
-    reg_items = get_regioni(token)
+    
+# =========================
+# PAGINAZIONE
+# =========================
 
-    selected_region_items = st.multiselect(
-        "Regione",
-        options=reg_items,
-        default=[],
-        format_func=lambda t: f"{t[0]} ({t[1]:,})" if t[1] else f"{t[0]}",
+    st.divider()
+    
+    st.header("Paginazione")
+
+    page_size = st.selectbox(
+        "Righe per pagina",
+        options=[50, 100, 200, 500, 1000],
+        index=1,
     )
-    selected_region = [r for (r, _) in selected_region_items]
+    page_number = st.number_input("Pagina", min_value=0, value=0, step=1)
 
 # =========================
 # ADMIN: Upload Excel -> Import
