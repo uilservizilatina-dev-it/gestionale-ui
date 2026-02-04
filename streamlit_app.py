@@ -290,6 +290,28 @@ with st.sidebar:
     # 3) Prima definisco sesso/nazionalità (così posso usarli subito dopo senza NameError)
     sex_choice = st.selectbox("Sesso", ["Tutti", "Maschi", "Femmine"], index=0)
     nat_choice = st.selectbox("Italiano / Estero (Prov. nascita = EE)", ["Tutti", "Italiano", "Estero"], index=0)
+    
+    st.divider()
+
+    eta_options = [
+        "≤ 20",
+        "21–40",
+        "41–60",
+        "> 60",
+    ]
+    selected_eta_labels = st.multiselect(
+        "Fascia di età",
+        options=eta_options,
+        default=[],
+    )
+
+    eta_map = {
+        "≤ 20": "LE20",
+        "21–40": "21_40",
+        "41–60": "41_60",
+        "> 60": "GT60",
+    }
+    selected_eta_codes = [eta_map[x] for x in selected_eta_labels]
 
     st.divider()
 
@@ -458,6 +480,10 @@ elif nat_choice == "Italiano":
 #anno di inserimento
 if selected_anni:
     params["anno_ins"] = selected_anni
+    
+# fascia età
+if selected_eta_codes:
+    params["eta_fascia"] = selected_eta_codes
 
 # Totale righe aggiornato (senza limit/offset)
 count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
@@ -470,12 +496,15 @@ with st.spinner("Caricamento dati..."):
 items = data.get("items", [])
 df = pd.DataFrame(items)
 
+# Rimuovi solo dalla visualizzazione (resta nel backend per filtri/export)
+df_view = df.drop(columns=["anno_inserimento"], errors="ignore")
+
 st.divider()
 st.subheader("Risultati")
 
-st.write(f"Record in pagina: {len(df):,} (page_size={page_size}, page={page_number})")
+st.write(f"Record in pagina: {len(df_view):,} (page_size={page_size}, page={page_number})")
 
-if df.empty:
+if df_view.empty:
     st.warning("Nessun record trovato con i filtri correnti.")
 else:
     # =========================
@@ -491,7 +520,7 @@ else:
     else:
         can_download = (len(selected_region) == 1 and selected_region[0] == (regione or "").upper())
 
-    if df.empty:
+    if df_view.empty:
         st.warning("Nessun record trovato con i filtri correnti.")
     else:
         # =========================
@@ -510,11 +539,11 @@ else:
         # 1) TABella: sempre visibile
         if is_admin or can_download:
             # toolbar ok (admin può scaricare anche nazionale)
-            st.dataframe(df, use_container_width=True, height=600)
+            st.dataframe(df_view, use_container_width=True, height=600)
         else:
             # NO toolbar => NO download
             st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
-            st.table(df)
+            st.table(df_view)
 
         # 2) Download CSV completo (solo se consentito)
         if can_download:
