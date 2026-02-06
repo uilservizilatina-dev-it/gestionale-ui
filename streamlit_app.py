@@ -312,6 +312,30 @@ with st.sidebar:
         "> 60": "GT60",
     }
     selected_eta_codes = [eta_map[x] for x in selected_eta_labels]
+    
+        gg_options = [
+        "10 o meno",
+        "11–50",
+        "51–100",
+        "101–150",
+        "151–180",
+        "Più di 180",
+    ]
+    selected_gg_labels = st.multiselect(
+        "Giornate lavorate (GG TOT)",
+        options=gg_options,
+        default=[],
+    )
+
+    gg_map = {
+        "10 o meno": "LE10",
+        "11–50": "11_50",
+        "51–100": "51_100",
+        "101–150": "101_150",
+        "151–180": "151_180",
+        "Più di 180": "GT180",
+    }
+    selected_gg_codes = [gg_map[x] for x in selected_gg_labels]
 
     st.divider()
 
@@ -484,6 +508,9 @@ if selected_anni:
 # fascia età
 if selected_eta_codes:
     params["eta_fascia"] = selected_eta_codes
+
+if selected_gg_codes:
+    params["gg_fascia"] = selected_gg_codes
 
 # Totale righe aggiornato (senza limit/offset)
 count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
