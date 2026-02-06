@@ -313,13 +313,13 @@ with st.sidebar:
     }
     selected_eta_codes = [eta_map[x] for x in selected_eta_labels]
     
-        gg_options = [
-        "10 o meno",
-        "11–50",
-        "51–100",
-        "101–150",
-        "151–180",
-        "Più di 180",
+    gg_options = [
+    "10 o meno",
+    "11–50",
+    "51–100",
+    "101–150",
+    "151–180",
+    "Più di 180",
     ]
     selected_gg_labels = st.multiselect(
         "Giornate lavorate (GG TOT)",
