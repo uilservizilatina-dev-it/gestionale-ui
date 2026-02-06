@@ -226,6 +226,14 @@ def get_comuni_nascita_for_prov_with_counts(tok: str, prov_n: str):
         if c:
             out.append((c, int(n) if n is not None else 0))
     return out
+    
+@st.cache_data(ttl=30, show_spinner=False)
+def get_gg_fasce(tok: str, params: dict):
+    p = dict(params)
+    p.pop("limit", None)
+    p.pop("offset", None)
+    p.pop("gg_fascia", None)  # vogliamo il totale complessivo
+    return api_get("/auth/gg-fasce", tok, params=p)
 
 # =========================
 # COUNT totale (cached)
@@ -314,12 +322,12 @@ with st.sidebar:
     selected_eta_codes = [eta_map[x] for x in selected_eta_labels]
     
     gg_options = [
-    "10 o meno",
-    "11–50",
-    "51–100",
-    "101–150",
-    "151–180",
-    "Più di 180",
+        "10 o meno",
+        "11–50",
+        "51–100",
+        "101–150",
+        "151–180",
+        "Più di 180",
     ]
     selected_gg_labels = st.multiselect(
         "Giornate lavorate (GG TOT)",
@@ -436,8 +444,8 @@ if role == "administrator":
     if up is not None and st.button("Importa nel database"):
         with st.spinner("Conversione Excel → CSV"):
             df_x = pd.read_excel(up, dtype=str)
-            anno = datetime.now().year
-            df_x["anno_inserimento"] = anno
+            anno = datetime.now().year - 1
+            df_x["anno_inserimento"] = 2024
             csv_bytes = df_x.to_csv(index=False).encode("utf-8")
 
         with st.spinner("Invio CSV al backend (job async)"):
@@ -529,7 +537,7 @@ df_view = df.drop(columns=["anno_inserimento"], errors="ignore")
 st.divider()
 st.subheader("Risultati")
 
-st.write(f"Record in pagina: {len(df_view):,} (page_size={page_size}, page={page_number})")
+st.write(f"Record in pagina: {len(df_view):,} (righe per pagina={page_size}, pagina={page_number})")
 
 if df_view.empty:
     st.warning("Nessun record trovato con i filtri correnti.")
@@ -571,6 +579,37 @@ else:
             # NO toolbar => NO download
             st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
             st.table(df_view)
+        st.subheader("Distribuzione giornate lavorate (GG TOT)")
+
+        gg_js = get_gg_fasce(token, params)
+        total = gg_js["total"]
+        counts = gg_js["counts"]
+
+        labels = {
+            "LE10": "10 o meno",
+            "11_50": "11–50",
+            "51_100": "51–100",
+            "101_150": "101–150",
+            "151_180": "151–180",
+            "GT180": "Più di 180",
+        }
+
+        data = {labels[k]: v for k, v in counts.items() if v > 0}
+
+        if total == 0:
+            st.caption("Nessun dato disponibile con i filtri correnti.")
+        else:
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots()
+            ax.pie(
+                data.values(),
+                labels=data.keys(),
+                autopct="%1.1f%%",
+                startangle=90
+            )
+            ax.axis("equal")
+            st.caption(f"Totale considerato: {total:,}")
+            st.pyplot(fig)
 
         # 2) Download CSV completo (solo se consentito)
         if can_download:
@@ -586,3 +625,4 @@ else:
                 file_name="elenchi_export.csv",
                 mime="text/csv",
             )
+            
