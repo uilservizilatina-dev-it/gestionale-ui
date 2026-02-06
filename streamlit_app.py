@@ -2,6 +2,7 @@ import time
 import requests
 import pandas as pd
 import streamlit as st
+import plotly.express as px
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -599,17 +600,23 @@ else:
         if total == 0:
             st.caption("Nessun dato disponibile con i filtri correnti.")
         else:
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots()
-            ax.pie(
-                data.values(),
-                labels=data.keys(),
-                autopct="%1.1f%%",
-                startangle=90
+
+            df_pie = pd.DataFrame({
+                "Fascia": list(data.keys()),
+                "Conteggio": list(data.values())
+            })
+
+            fig = px.pie(
+                df_pie,
+                names="Fascia",
+                values="Conteggio",
+                hole=0.4
             )
-            ax.axis("equal")
+
+            fig.update_traces(textinfo="percent+label")
+
+            st.plotly_chart(fig, use_container_width=True)
             st.caption(f"Totale considerato: {total:,}")
-            st.pyplot(fig)
 
         # 2) Download CSV completo (solo se consentito)
         if can_download:
