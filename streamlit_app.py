@@ -12,12 +12,27 @@ st.set_page_config(page_title="Gestionale Elenchi", layout="wide")
 
 HIDE_DF_TOOLBAR_CSS = """
 <style>
-/* Nasconde la toolbar del dataframe (download, fullscreen, ecc.) */
-div[data-testid="stDataFrame"] [data-testid="stToolbar"] {
-    display: none !important;
+/* Toolbar “overlay” (download/search/fullscreen) in varie versioni Streamlit */
+div[data-testid="stElementToolbar"],
+div[data-testid="stToolbar"],
+div[data-testid="stToolbarActions"],
+div[data-testid="stElementToolbarButton"],
+div[data-testid="stElementToolbarButton"] > button {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+}
+
+/* Variante: alcuni build usano classi diverse */
+.stElementToolbar,
+.stToolbar {
+  display: none !important;
+  visibility: hidden !important;
 }
 </style>
 """
+
 
 API_BASE = st.secrets.get("API_BASE", "http://localhost:8000")
 token = (st.query_params.get("token", "") or "").strip()
