@@ -575,7 +575,7 @@ else:
         # 1) TABella: sempre visibile
         if is_admin or can_download:
             # toolbar ok (admin può scaricare anche nazionale)
-            st.dataframe(df_view, width="100%", height=600)
+            st.dataframe(df_view, width="stretch", height=600)
         else:
             # NO toolbar => NO download
             st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
@@ -615,7 +615,7 @@ else:
 
             fig.update_traces(textinfo="percent+label")
 
-            st.plotly_chart(fig, width="100%")
+            st.plotly_chart(fig, width="stretch")
             st.caption(f"Totale considerato: {total:,}")
 
         # 2) Download CSV completo (solo se consentito)
