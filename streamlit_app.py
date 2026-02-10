@@ -559,77 +559,61 @@ else:
     # =========================
     is_admin = (role == "administrator")
 
-    can_download = False
     if is_admin:
         can_download = True
     else:
         can_download = (len(selected_region) == 1 and selected_region[0] == (regione or "").upper())
 
-    if df_view.empty:
-        st.warning("Nessun record trovato con i filtri correnti.")
+    # 1) TABella: SEMPRE dataframe (scroll interno)
+    # Se non può scaricare → nascondo toolbar con CSS
+    if not (is_admin or can_download):
+        st.markdown(HIDE_DF_TOOLBAR_CSS, unsafe_allow_html=True)
+        st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
 
-        # 1) TABella: SEMPRE dataframe (scroll interno)
-        # Se non può scaricare → nascondo toolbar con CSS
-        if not (is_admin or can_download):
-            st.markdown(HIDE_DF_TOOLBAR_CSS, unsafe_allow_html=True)
-            st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
+    st.dataframe(
+        df_view,
+        width="stretch",
+        height=600
+    )
 
-        st.dataframe(
-            df_view,
-            width="stretch",
-            height=600
+    # 2) Grafico GG (se hai plotly installato; altrimenti cambiamo a bar_chart)
+    st.subheader("Distribuzione giornate lavorate (GG TOT)")
+
+    gg_js = get_gg_fasce(token, params)
+    total = gg_js.get("total", 0)
+    counts = gg_js.get("counts", {}) or {}
+
+    labels = {
+        "LE10": "10 o meno",
+        "11_50": "11–50",
+        "51_100": "51–100",
+        "101_150": "101–150",
+        "151_180": "151–180",
+        "GT180": "Più di 180",
+    }
+
+    data = {labels[k]: int(v) for k, v in counts.items() if int(v or 0) > 0}
+
+    if total == 0 or not data:
+        st.caption("Nessun dato disponibile con i filtri correnti.")
+    else:
+        df_pie = pd.DataFrame({"Fascia": list(data.keys()), "Conteggio": list(data.values())})
+        fig = px.pie(df_pie, names="Fascia", values="Conteggio", hole=0.4)
+        fig.update_traces(textinfo="percent+label")
+        st.plotly_chart(fig, width="stretch")
+        st.caption(f"Totale considerato: {int(total):,}")
+
+    # 3) Download CSV completo (solo se consentito)
+    if can_download:
+        export_params = dict(params)
+        export_params.pop("limit", None)
+        export_params.pop("offset", None)
+
+        csv_bytes = api_get_raw("/auth/export", token, params=export_params)
+
+        st.download_button(
+            "Scarica CSV (tutti i risultati filtrati)",
+            data=csv_bytes,
+            file_name="elenchi_export.csv",
+            mime="text/csv",
         )
-        
-        st.subheader("Distribuzione giornate lavorate (GG TOT)")
-
-        gg_js = get_gg_fasce(token, params)
-        total = gg_js["total"]
-        counts = gg_js["counts"]
-
-        labels = {
-            "LE10": "10 o meno",
-            "11_50": "11–50",
-            "51_100": "51–100",
-            "101_150": "101–150",
-            "151_180": "151–180",
-            "GT180": "Più di 180",
-        }
-
-        data = {labels[k]: v for k, v in counts.items() if v > 0}
-
-        if total == 0:
-            st.caption("Nessun dato disponibile con i filtri correnti.")
-        else:
-
-            df_pie = pd.DataFrame({
-                "Fascia": list(data.keys()),
-                "Conteggio": list(data.values())
-            })
-
-            fig = px.pie(
-                df_pie,
-                names="Fascia",
-                values="Conteggio",
-                hole=0.4
-            )
-
-            fig.update_traces(textinfo="percent+label")
-
-            st.plotly_chart(fig, width="stretch")
-            st.caption(f"Totale considerato: {total:,}")
-
-        # 2) Download CSV completo (solo se consentito)
-        if can_download:
-            export_params = dict(params)
-            export_params.pop("limit", None)
-            export_params.pop("offset", None)
-
-            csv_bytes = api_get_raw("/auth/export", token, params=export_params)
-
-            st.download_button(
-                "Scarica CSV (tutti i risultati filtrati)",
-                data=csv_bytes,
-                file_name="elenchi_export.csv",
-                mime="text/csv",
-            )
-            
