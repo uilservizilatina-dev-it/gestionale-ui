@@ -10,6 +10,15 @@ from datetime import datetime
 
 st.set_page_config(page_title="Gestionale Elenchi", layout="wide")
 
+HIDE_DF_TOOLBAR_CSS = """
+<style>
+/* Nasconde la toolbar del dataframe (download, fullscreen, ecc.) */
+div[data-testid="stDataFrame"] [data-testid="stToolbar"] {
+    display: none !important;
+}
+</style>
+"""
+
 API_BASE = st.secrets.get("API_BASE", "http://localhost:8000")
 token = (st.query_params.get("token", "") or "").strip()
 
@@ -558,28 +567,19 @@ else:
 
     if df_view.empty:
         st.warning("Nessun record trovato con i filtri correnti.")
-    else:
-        # =========================
-        # DOWNLOAD: regole
-        # - admin: sempre (anche nazionale)
-        # - non-admin: solo se filtro Regione attivo ed è la sua
-        # =========================
-        is_admin = (role == "administrator")
 
-        can_download = False
-        if is_admin:
-            can_download = True
-        else:
-            can_download = (len(selected_region) == 1 and selected_region[0] == (regione or "").upper())
-
-        # 1) TABella: sempre visibile
-        if is_admin or can_download:
-            # toolbar ok (admin può scaricare anche nazionale)
-            st.dataframe(df_view, width="stretch", height=600)
-        else:
-            # NO toolbar => NO download
+        # 1) TABella: SEMPRE dataframe (scroll interno)
+        # Se non può scaricare → nascondo toolbar con CSS
+        if not (is_admin or can_download):
+            st.markdown(HIDE_DF_TOOLBAR_CSS, unsafe_allow_html=True)
             st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
-            st.table(df_view)
+
+        st.dataframe(
+            df_view,
+            width="stretch",
+            height=600
+        )
+        
         st.subheader("Distribuzione giornate lavorate (GG TOT)")
 
         gg_js = get_gg_fasce(token, params)
