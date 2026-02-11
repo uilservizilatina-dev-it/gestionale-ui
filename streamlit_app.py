@@ -260,6 +260,23 @@ def get_gg_fasce(tok: str, params: dict):
     p.pop("gg_fascia", None)  # vogliamo il totale complessivo
     return api_get("/auth/gg-fasce", tok, params=p)
 
+@st.cache_data(ttl=30, show_spinner=False)
+def get_stats_sex(tok: str, params: dict):
+    p = dict(params)
+    p.pop("limit", None)
+    p.pop("offset", None)
+    p.pop("sesso", None)  # questo grafico DEVE ignorare il filtro sesso
+    return api_get("/auth/stats-sex", tok, params=p)
+
+@st.cache_data(ttl=30, show_spinner=False)
+def get_stats_nat(tok: str, params: dict):
+    p = dict(params)
+    p.pop("limit", None)
+    p.pop("offset", None)
+    p.pop("nato_estero", None)  # questo grafico DEVE ignorare il filtro italiano/estero
+    return api_get("/auth/stats-nat", tok, params=p)
+
+
 # =========================
 # COUNT totale (cached)
 # =========================
@@ -590,6 +607,56 @@ else:
         width="stretch",
         height=600
     )
+    
+    st.divider()
+    st.subheader("Statistiche")
+
+    sex_stats = get_stats_sex(token, params)
+    nat_stats = get_stats_nat(token, params)
+
+    # layout: 3 in linea (desktop), su mobile Streamlit li impila
+    c1, c2, c3 = st.columns(3)
+
+    # 1) % lavoratori M/F
+    with c1:
+        df1 = pd.DataFrame({
+            "Categoria": ["Maschi", "Femmine"],
+            "Valore": [sex_stats["count"]["M"], sex_stats["count"]["F"]],
+        })
+        fig1 = px.pie(df1, names="Categoria", values="Valore", hole=0.4, title="Lavoratori per sesso")
+        fig1.update_traces(textinfo="percent+label")
+        st.plotly_chart(fig1, width="stretch")
+
+    # 2) % GG TOT per M/F
+    with c2:
+        df2 = pd.DataFrame({
+            "Categoria": ["Maschi", "Femmine"],
+            "Valore": [sex_stats["gg_tot"]["M"], sex_stats["gg_tot"]["F"]],
+        })
+        fig2 = px.pie(df2, names="Categoria", values="Valore", hole=0.4, title="Giornate lavorate per sesso (GG TOT)")
+        fig2.update_traces(textinfo="percent+label")
+        st.plotly_chart(fig2, width="stretch")
+
+    # 3) % lavoratori Italiani/Esteri
+    with c3:
+        df3 = pd.DataFrame({
+            "Categoria": ["Italiani", "Esteri"],
+            "Valore": [nat_stats["count"]["ITALIANI"], nat_stats["count"]["ESTERI"]],
+        })
+        fig3 = px.pie(df3, names="Categoria", values="Valore", hole=0.4, title="Lavoratori italiani vs esteri")
+        fig3.update_traces(textinfo="percent+label")
+        st.plotly_chart(fig3, width="stretch")
+
+    # 4) seconda riga: % GG TOT Italiani/Esteri
+    c4, _, _ = st.columns(3)
+    with c4:
+        df4 = pd.DataFrame({
+            "Categoria": ["Italiani", "Esteri"],
+            "Valore": [nat_stats["gg_tot"]["ITALIANI"], nat_stats["gg_tot"]["ESTERI"]],
+        })
+        fig4 = px.pie(df4, names="Categoria", values="Valore", hole=0.4, title="Giornate lavorate italiani vs esteri (GG TOT)")
+        fig4.update_traces(textinfo="percent+label")
+        st.plotly_chart(fig4, width="stretch")
 
     # 2) Grafico GG (se hai plotly installato; altrimenti cambiamo a bar_chart)
     st.subheader("Distribuzione giornate lavorate (GG TOT)")
