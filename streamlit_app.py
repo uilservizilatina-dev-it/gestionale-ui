@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+import os
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -34,7 +35,7 @@ div[data-testid="stElementToolbarButton"] > button {
 """
 
 
-API_BASE = st.secrets.get("API_BASE", "http://localhost:8000")
+API_BASE = os.getenv("API_BASE", "http://localhost:8000")
 token = (st.query_params.get("token", "") or "").strip()
 
 st.title("Gestionale Elenchi")
