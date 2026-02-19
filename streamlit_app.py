@@ -566,7 +566,7 @@ if selected_gg_codes:
 # Totale righe aggiornato (senza limit/offset)
 count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
 total_rows = cached_count(token, count_params)
-st.write(f"Totale righe trovate (con questi filtri): {total_rows:,}")
+st.write(f"Totale braccianti (con questi filtri attivi): {total_rows:,}")
 
 with st.spinner("Caricamento dati..."):
     data = api_get("/auth/search", token, params=params)
@@ -578,45 +578,6 @@ df = pd.DataFrame(items)
 df_view = df.drop(columns=["anno_inserimento"], errors="ignore")
 
 st.divider()
-st.subheader("Risultati")
-
-st.write(f"Record in pagina: {len(df_view):,} (righe per pagina={page_size}, pagina={page_number})")
-
-if df_view.empty:
-    st.warning("Nessun record trovato con i filtri correnti.")
-else:
-    # =========================
-    # DOWNLOAD: regole
-    # - admin: sempre (anche nazionale)
-    # - non-admin: solo se filtro Regione attivo ed è la sua
-    # =========================
-    is_admin = (role == "administrator")
-
-    if is_admin:
-        can_download = True
-    else:
-        can_download = (len(selected_region) == 1 and selected_region[0] == (regione or "").upper())
-
-    # 1) TABella: SEMPRE dataframe (scroll interno)
-    # Se non può scaricare → nascondo toolbar con CSS
-    if not (is_admin or can_download):
-        st.markdown(HIDE_DF_TOOLBAR_CSS, unsafe_allow_html=True)
-        st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
-
-    st.dataframe(
-        df_view,
-        width="stretch",
-        height=600
-    )
-    
-    st.divider()
-    st.subheader("Statistiche")
-
-    sex_stats = get_stats_sex(token, params)
-    nat_stats = get_stats_nat(token, params)
-
-    # layout: 3 in linea (desktop), su mobile Streamlit li impila
-    c1, c2, c3 = st.columns(3)
 
     # 1) % lavoratori M/F
     with c1:
@@ -700,3 +661,44 @@ else:
             file_name="elenchi_export.csv",
             mime="text/csv",
         )
+        
+st.divider()        
+st.subheader("Tabella")
+
+st.write(f"Righe in pagina: {len(df_view):,} (righe per pagina = {page_size}, pagina numero = {page_number})")
+
+if df_view.empty:
+    st.warning("Nessun bracciante trovato con i filtri correnti.")
+else:
+    # =========================
+    # DOWNLOAD: regole
+    # - admin: sempre (anche nazionale)
+    # - non-admin: solo se filtro Regione attivo ed è la sua
+    # =========================
+    is_admin = (role == "administrator")
+
+    if is_admin:
+        can_download = True
+    else:
+        can_download = (len(selected_region) == 1 and selected_region[0] == (regione or "").upper())
+
+    # 1) TABella: SEMPRE dataframe (scroll interno)
+    # Se non può scaricare → nascondo toolbar con CSS
+    if not (is_admin or can_download):
+        st.markdown(HIDE_DF_TOOLBAR_CSS, unsafe_allow_html=True)
+        st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
+
+    st.dataframe(
+        df_view,
+        width="stretch",
+        height=600
+    )
+    
+    st.divider()
+    st.subheader("Statistiche")
+
+    sex_stats = get_stats_sex(token, params)
+    nat_stats = get_stats_nat(token, params)
+
+    # layout: 3 in linea (desktop), su mobile Streamlit li impila
+    c1, c2, c3 = st.columns(3)
