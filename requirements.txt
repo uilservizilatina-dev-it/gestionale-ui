@@ -6,3 +6,6 @@ pandas
 openpyxl
 python-multipart
 plotly
+streamlit
+requests
+urllib3
