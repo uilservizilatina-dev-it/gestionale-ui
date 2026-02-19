@@ -577,8 +577,17 @@ df = pd.DataFrame(items)
 # Rimuovi solo dalla visualizzazione (resta nel backend per filtri/export)
 df_view = df.drop(columns=["anno_inserimento"], errors="ignore")
 
-st.divider()
+if df_view.empty:
+    st.warning("Nessun bracciante trovato con i filtri correnti.")
+else:
+    st.divider()
+    st.subheader("Statistiche")
 
+    sex_stats = get_stats_sex(token, params)
+    nat_stats = get_stats_nat(token, params)
+
+    # layout: 3 in linea (desktop), su mobile Streamlit li impila
+    c1, c2, c3 = st.columns(3)
     # 1) % lavoratori M/F
     with c1:
         df1 = pd.DataFrame({
@@ -662,14 +671,11 @@ st.divider()
             mime="text/csv",
         )
         
-st.divider()        
-st.subheader("Tabella")
+    st.divider()        
+    st.subheader("Tabella")
 
-st.write(f"Righe in pagina: {len(df_view):,} (righe per pagina = {page_size}, pagina numero = {page_number})")
+    st.write(f"Righe in pagina: {len(df_view):,} (righe per pagina = {page_size}, pagina numero = {page_number})")
 
-if df_view.empty:
-    st.warning("Nessun bracciante trovato con i filtri correnti.")
-else:
     # =========================
     # DOWNLOAD: regole
     # - admin: sempre (anche nazionale)
@@ -693,12 +699,3 @@ else:
         width="stretch",
         height=600
     )
-    
-    st.divider()
-    st.subheader("Statistiche")
-
-    sex_stats = get_stats_sex(token, params)
-    nat_stats = get_stats_nat(token, params)
-
-    # layout: 3 in linea (desktop), su mobile Streamlit li impila
-    c1, c2, c3 = st.columns(3)
