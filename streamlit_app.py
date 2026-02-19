@@ -655,21 +655,6 @@ else:
         fig.update_traces(textinfo="percent+label")
         st.plotly_chart(fig, width="stretch")
         st.caption(f"Totale considerato: {int(total):,}")
-
-    # 3) Download CSV completo (solo se consentito)
-    if can_download:
-        export_params = dict(params)
-        export_params.pop("limit", None)
-        export_params.pop("offset", None)
-
-        csv_bytes = api_get_raw("/auth/export", token, params=export_params)
-
-        st.download_button(
-            "Scarica CSV (tutti i risultati filtrati)",
-            data=csv_bytes,
-            file_name="elenchi_export.csv",
-            mime="text/csv",
-        )
         
     st.divider()        
     st.subheader("Tabella")
@@ -699,3 +684,18 @@ else:
         width="stretch",
         height=600
     )
+    
+    # 3) Download CSV completo (solo se consentito)
+    if can_download:
+        export_params = dict(params)
+        export_params.pop("limit", None)
+        export_params.pop("offset", None)
+
+        csv_bytes = api_get_raw("/auth/export", token, params=export_params)
+
+        st.download_button(
+            "Scarica CSV (tutti i risultati filtrati)",
+            data=csv_bytes,
+            file_name="elenchi_export.csv",
+            mime="text/csv",
+        )
