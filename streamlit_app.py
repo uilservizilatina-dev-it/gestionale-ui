@@ -222,6 +222,12 @@ who = cached_whoami(token)
 role = (who.get("role") or "").lower()
 regione = who.get("regione")
 
+# =========================
+# RUOLO / REGIONE (per UI e regole)
+# =========================
+is_admin = (role == "administrator")
+user_region = (regione or "").upper()
+
 st.info(f"Utente: {who.get('username')} — Ruolo: {role or 'n/a'} — Regione: {regione or 'n/a'}")
 
 # =========================
@@ -316,25 +322,32 @@ with st.sidebar:
     st.header("Filtri")
     
     # 6) Regione: filtro regione
-    reg_items = get_regioni(token)
-
-# =========================
-# FILTRO REGIONE
-# =========================
+    reg_items = get_regioni(token)  # lista di tuple: (REGIONE, count)
 
     if is_admin:
-        # Admin può selezionare liberamente
-        selected_region = st.sidebar.multiselect("Regione", region_options)
+        # Admin: selezione libera
+        selected_region_items = st.multiselect(
+            "Regione",
+            options=reg_items,
+            default=[],
+            format_func=lambda t: f"{t[0]} ({t[1]:,})" if t[1] else f"{t[0]}",
+        )
+        selected_region = [r for (r, _) in selected_region_items]
 
     else:
-        # Non-admin: solo la propria regione (read-only)
+        # Non-admin: read-only sulla propria regione
         selected_region = [user_region]
 
-        st.sidebar.selectbox(
+        # Mostro il campo disabilitato (solo estetica/UX)
+        # Se reg_items contiene count, lo mostro; altrimenti solo nome.
+        count_map = {r: c for (r, c) in reg_items}
+        label = f"{user_region} ({count_map.get(user_region, 0):,})" if user_region else "N/A"
+
+        st.selectbox(
             "Regione",
-            options=[user_region],
+            options=[label],
             index=0,
-            disabled=True
+            disabled=True,
         )
 
     # 1) Residenza: Province (con count)
