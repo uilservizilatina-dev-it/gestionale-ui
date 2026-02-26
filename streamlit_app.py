@@ -36,7 +36,25 @@ div[data-testid="stElementToolbarButton"] > button {
 
 
 API_BASE = os.getenv("API_BASE", "http://localhost:8000")
-token = (st.query_params.get("token", "") or "").strip()
+# =========================
+# TOKEN HANDLING SICURO
+# =========================
+
+# 1) Se arriva da URL, salvalo in session_state
+if "token" in st.query_params:
+    incoming = (st.query_params.get("token", "") or "").strip()
+    if incoming:
+        st.session_state["auth_token"] = incoming
+
+    # 2) Rimuovi subito il token dalla URL
+    st.query_params.clear()
+
+# 3) Usa sempre il token dalla sessione
+token = st.session_state.get("auth_token", "")
+
+if not token:
+    st.error("Sessione non valida. Accedi dal portale.")
+    st.stop()
 
 st.title("Gestionale Elenchi")
 st.caption("Consultazione elenchi – accesso riservato (WordPress)")
@@ -300,13 +318,24 @@ with st.sidebar:
     # 6) Regione: filtro regione
     reg_items = get_regioni(token)
 
-    selected_region_items = st.multiselect(
-        "Regione",
-        options=reg_items,
-        default=[],
-        format_func=lambda t: f"{t[0]} ({t[1]:,})" if t[1] else f"{t[0]}",
-    )
-    selected_region = [r for (r, _) in selected_region_items]
+# =========================
+# FILTRO REGIONE
+# =========================
+
+    if is_admin:
+        # Admin può selezionare liberamente
+        selected_region = st.sidebar.multiselect("Regione", region_options)
+
+    else:
+        # Non-admin: solo la propria regione (read-only)
+        selected_region = [user_region]
+
+        st.sidebar.selectbox(
+            "Regione",
+            options=[user_region],
+            index=0,
+            disabled=True
+        )
 
     # 1) Residenza: Province (con count)
     prov_items = get_province_with_counts(token)
@@ -487,8 +516,68 @@ if role == "administrator":
     if up is not None and st.button("Importa nel database"):
         with st.spinner("Conversione Excel → CSV"):
             df_x = pd.read_excel(up, dtype=str)
-            anno = datetime.now().year - 1
-            df_x["anno_inserimento"] = 2024
+
+            # 1) colonne attese dal backend (COPY elenchi(...))
+            REQUIRED_COLS = [
+                "cognome_nome",
+                "prov_nascita",
+                "comune_nascita",
+                "anno_nascita_yy",
+                "sesso",
+                "gg_tot",
+                "regione",
+                "provincia",
+                "comune",
+                "anno_inserimento",
+            ]
+
+            # 2) check colonne (fallisce subito se manca qualcosa)
+            missing = [c for c in REQUIRED_COLS if c not in df_x.columns]
+            if missing:
+                st.error(f"Excel non valido. Colonne mancanti: {missing}")
+                st.stop()
+
+            # 3) tieni solo colonne attese + ordine garantito
+            df_x = df_x[REQUIRED_COLS].copy()
+
+            # 4) normalizzazione: vuoti/nan/NULL -> None
+            def norm_cell(v):
+                if v is None:
+                    return None
+                s = str(v).strip()
+                if s == "" or s.lower() in ("nan", "none", "null"):
+                    return None
+                return s
+
+            for c in REQUIRED_COLS:
+                df_x[c] = df_x[c].map(norm_cell)
+
+            # 5) anno inserimento = anno corrente (se mancante o sporco)
+            current_year = datetime.now().year
+            df_x["anno_inserimento"] = current_year - 1
+
+            # 6) sesso normalizzato a M/F
+            def norm_sex(v):
+                if not v:
+                    return None
+                s = str(v).strip().upper()
+                if s in ("M", "MASCHIO", "MALE"):
+                    return "M"
+                if s in ("F", "FEMMINA", "FEMALE"):
+                    return "F"
+                return None
+
+            df_x["sesso"] = df_x["sesso"].map(norm_sex)
+
+            # 7) campi numerici (se non convertibili -> None)
+            df_x["anno_nascita_yy"] = pd.to_numeric(df_x["anno_nascita_yy"], errors="coerce")
+            df_x["gg_tot"] = pd.to_numeric(df_x["gg_tot"], errors="coerce")
+
+            # 8) uppercasing su campi territoriali
+            for c in ["prov_nascita", "regione", "provincia", "comune", "comune_nascita"]:
+                df_x[c] = df_x[c].map(lambda v: v.strip().upper() if isinstance(v, str) and v.strip() else None)
+
+            # 9) CSV: None -> stringa vuota, così il backend può mappare a NULL (a seconda del COPY)
             csv_bytes = df_x.to_csv(index=False).encode("utf-8")
 
         with st.spinner("Invio CSV al backend (job async)"):
