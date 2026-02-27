@@ -536,16 +536,16 @@ with st.sidebar:
 # PAGINAZIONE
 # =========================
 
-    st.divider()
-    
-    st.header("Paginazione")
-
-    page_size = st.selectbox(
-        "Righe per pagina",
-        options=[50, 100, 200, 500, 1000],
-        index=1,
-    )
-    page_number = st.number_input("Pagina", min_value=0, value=0, step=1)
+    # st.divider()
+    #
+    # st.header("Paginazione")
+    #
+    # page_size = st.selectbox(
+    #    "Righe per pagina",
+    #    options=[50, 100, 200, 500, 1000],
+    #    index=1,
+    # )
+    # page_number = st.number_input("Pagina", min_value=0, value=0, step=1)
 
 # =========================
 # ADMIN: Upload Excel -> Import
@@ -700,135 +700,138 @@ if selected_gg_codes:
 count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
 total_rows = cached_count(token, count_params)
 st.write(f"Totale braccianti (con questi filtri attivi): {total_rows:,}")
-
-with st.spinner("Caricamento dati..."):
-    data = api_get("/auth/search", token, params=params)
-
-items = data.get("items", [])
-df = pd.DataFrame(items)
-
-# Rimuovi solo dalla visualizzazione (resta nel backend per filtri/export)
-df_view = df.drop(columns=["anno_inserimento"], errors="ignore")
-
-if df_view.empty:
+if total_rows == 0:
     st.warning("Nessun bracciante trovato con i filtri correnti.")
+    st.stop()
+
+# with st.spinner("Caricamento dati..."):
+#    data = api_get("/auth/search", token, params=params)
+
+# items = data.get("items", [])
+# df = pd.DataFrame(items)
+# 
+# # Rimuovi solo dalla visualizzazione (resta nel backend per filtri/export)
+# df_view = df.drop(columns=["anno_inserimento"], errors="ignore")
+# 
+# if df_view.empty:
+#     st.warning("Nessun bracciante trovato con i filtri correnti.")
+# else:
+st.divider()
+st.subheader("Statistiche")
+
+sex_stats = get_stats_sex(token, params)
+nat_stats = get_stats_nat(token, params)
+
+# layout: 3 in linea (desktop), su mobile Streamlit li impila
+c1, c2, c3 = st.columns(3)
+# 1) % lavoratori M/F
+with c1:
+    df1 = pd.DataFrame({
+        "Categoria": ["Maschi", "Femmine"],
+        "Valore": [sex_stats["count"]["M"], sex_stats["count"]["F"]],
+    })
+    fig1 = px.pie(df1, names="Categoria", values="Valore", hole=0.4, title="Lavoratori per sesso")
+    fig1.update_traces(textinfo="percent+label")
+    st.plotly_chart(fig1, width="stretch")
+
+# 2) % GG TOT per M/F
+with c2:
+    df2 = pd.DataFrame({
+        "Categoria": ["Maschi", "Femmine"],
+        "Valore": [sex_stats["gg_tot"]["M"], sex_stats["gg_tot"]["F"]],
+    })
+    fig2 = px.pie(df2, names="Categoria", values="Valore", hole=0.4, title="Giornate lavorate per sesso (GG TOT)")
+    fig2.update_traces(textinfo="percent+label")
+    st.plotly_chart(fig2, width="stretch")
+
+# 3) % lavoratori Italiani/Esteri
+with c3:
+    df3 = pd.DataFrame({
+        "Categoria": ["Italiani", "Esteri"],
+        "Valore": [nat_stats["count"]["ITALIANI"], nat_stats["count"]["ESTERI"]],
+    })
+    fig3 = px.pie(df3, names="Categoria", values="Valore", hole=0.4, title="Lavoratori italiani vs esteri")
+    fig3.update_traces(textinfo="percent+label")
+    st.plotly_chart(fig3, width="stretch")
+
+# 4) seconda riga: % GG TOT Italiani/Esteri
+c4, _, _ = st.columns(3)
+with c4:
+    df4 = pd.DataFrame({
+        "Categoria": ["Italiani", "Esteri"],
+        "Valore": [nat_stats["gg_tot"]["ITALIANI"], nat_stats["gg_tot"]["ESTERI"]],
+    })
+    fig4 = px.pie(df4, names="Categoria", values="Valore", hole=0.4, title="Giornate lavorate italiani vs esteri (GG TOT)")
+    fig4.update_traces(textinfo="percent+label")
+    st.plotly_chart(fig4, width="stretch")
+
+# 2) Grafico GG (se hai plotly installato; altrimenti cambiamo a bar_chart)
+st.subheader("Distribuzione giornate lavorate (GG TOT)")
+
+gg_js = get_gg_fasce(token, params)
+total = gg_js.get("total", 0)
+counts = gg_js.get("counts", {}) or {}
+
+labels = {
+    "LE10": "10 o meno",
+    "11_50": "11–50",
+    "51_100": "51–100",
+    "101_150": "101–150",
+    "151_180": "151–180",
+    "GT180": "Più di 180",
+}
+
+data = {labels[k]: int(v) for k, v in counts.items() if int(v or 0) > 0}
+
+if total == 0 or not data:
+    st.caption("Nessun dato disponibile con i filtri correnti.")
 else:
-    st.divider()
-    st.subheader("Statistiche")
+    df_pie = pd.DataFrame({"Fascia": list(data.keys()), "Conteggio": list(data.values())})
+    fig = px.pie(df_pie, names="Fascia", values="Conteggio", hole=0.4)
+    fig.update_traces(textinfo="percent+label")
+    st.plotly_chart(fig, width="stretch")
+    st.caption(f"Totale considerato: {int(total):,}")
+    
+# st.divider()        
+# st.subheader("Tabella")
 
-    sex_stats = get_stats_sex(token, params)
-    nat_stats = get_stats_nat(token, params)
-
-    # layout: 3 in linea (desktop), su mobile Streamlit li impila
-    c1, c2, c3 = st.columns(3)
-    # 1) % lavoratori M/F
-    with c1:
-        df1 = pd.DataFrame({
-            "Categoria": ["Maschi", "Femmine"],
-            "Valore": [sex_stats["count"]["M"], sex_stats["count"]["F"]],
-        })
-        fig1 = px.pie(df1, names="Categoria", values="Valore", hole=0.4, title="Lavoratori per sesso")
-        fig1.update_traces(textinfo="percent+label")
-        st.plotly_chart(fig1, width="stretch")
-
-    # 2) % GG TOT per M/F
-    with c2:
-        df2 = pd.DataFrame({
-            "Categoria": ["Maschi", "Femmine"],
-            "Valore": [sex_stats["gg_tot"]["M"], sex_stats["gg_tot"]["F"]],
-        })
-        fig2 = px.pie(df2, names="Categoria", values="Valore", hole=0.4, title="Giornate lavorate per sesso (GG TOT)")
-        fig2.update_traces(textinfo="percent+label")
-        st.plotly_chart(fig2, width="stretch")
-
-    # 3) % lavoratori Italiani/Esteri
-    with c3:
-        df3 = pd.DataFrame({
-            "Categoria": ["Italiani", "Esteri"],
-            "Valore": [nat_stats["count"]["ITALIANI"], nat_stats["count"]["ESTERI"]],
-        })
-        fig3 = px.pie(df3, names="Categoria", values="Valore", hole=0.4, title="Lavoratori italiani vs esteri")
-        fig3.update_traces(textinfo="percent+label")
-        st.plotly_chart(fig3, width="stretch")
-
-    # 4) seconda riga: % GG TOT Italiani/Esteri
-    c4, _, _ = st.columns(3)
-    with c4:
-        df4 = pd.DataFrame({
-            "Categoria": ["Italiani", "Esteri"],
-            "Valore": [nat_stats["gg_tot"]["ITALIANI"], nat_stats["gg_tot"]["ESTERI"]],
-        })
-        fig4 = px.pie(df4, names="Categoria", values="Valore", hole=0.4, title="Giornate lavorate italiani vs esteri (GG TOT)")
-        fig4.update_traces(textinfo="percent+label")
-        st.plotly_chart(fig4, width="stretch")
-
-    # 2) Grafico GG (se hai plotly installato; altrimenti cambiamo a bar_chart)
-    st.subheader("Distribuzione giornate lavorate (GG TOT)")
-
-    gg_js = get_gg_fasce(token, params)
-    total = gg_js.get("total", 0)
-    counts = gg_js.get("counts", {}) or {}
-
-    labels = {
-        "LE10": "10 o meno",
-        "11_50": "11–50",
-        "51_100": "51–100",
-        "101_150": "101–150",
-        "151_180": "151–180",
-        "GT180": "Più di 180",
-    }
-
-    data = {labels[k]: int(v) for k, v in counts.items() if int(v or 0) > 0}
-
-    if total == 0 or not data:
-        st.caption("Nessun dato disponibile con i filtri correnti.")
-    else:
-        df_pie = pd.DataFrame({"Fascia": list(data.keys()), "Conteggio": list(data.values())})
-        fig = px.pie(df_pie, names="Fascia", values="Conteggio", hole=0.4)
-        fig.update_traces(textinfo="percent+label")
-        st.plotly_chart(fig, width="stretch")
-        st.caption(f"Totale considerato: {int(total):,}")
-        
-    st.divider()        
-    st.subheader("Tabella")
-
-    st.write(f"Righe in pagina: {len(df_view):,} (righe per pagina = {page_size}, pagina numero = {page_number})")
+# st.write(f"Righe in pagina: {len(df_view):,} (righe per pagina = {page_size}, pagina numero = {page_number})")
 
     # =========================
     # DOWNLOAD: regole
     # - admin: sempre (anche nazionale)
     # - non-admin: solo se filtro Regione attivo ed è la sua
     # =========================
-    is_admin = (role == "administrator")
-
-    if is_admin:
-        can_download = True
-    else:
-        can_download = (len(selected_region) == 1 and selected_region[0] == (regione or "").upper())
-
-    # 1) TABella: SEMPRE dataframe (scroll interno)
-    # Se non può scaricare → nascondo toolbar con CSS
-    if not (is_admin or can_download):
-        st.markdown(HIDE_DF_TOOLBAR_CSS, unsafe_allow_html=True)
-        st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
-
-    st.dataframe(
-        df_view,
-        width="stretch",
-        height=600
-    )
-    
-    # 3) Download CSV completo (solo se consentito)
-    if can_download:
-        export_params = dict(params)
-        export_params.pop("limit", None)
-        export_params.pop("offset", None)
-
-        csv_bytes = api_get_raw("/auth/export", token, params=export_params)
-
-        st.download_button(
-            "Scarica CSV (tutti i risultati filtrati)",
-            data=csv_bytes,
-            file_name="elenchi_export.csv",
-            mime="text/csv",
-        )
+    # is_admin = (role == "administrator")
+    # 
+    # if is_admin:
+    #     can_download = True
+    # else:
+    #     can_download = (len(selected_region) == 1 and selected_region[0] == (regione or "").upper())
+    # 
+    # # 1) TABella: SEMPRE dataframe (scroll interno)
+    # # Se non può scaricare → nascondo toolbar con CSS
+    # if not (is_admin or can_download):
+    #     st.markdown(HIDE_DF_TOOLBAR_CSS, unsafe_allow_html=True)
+    #     st.caption("Download disabilitato: per abilitarlo devi filtrare per Regione (la tua).")
+    # 
+    # st.dataframe(
+    #     df_view,
+    #     width="stretch",
+    #     height=600
+    # )
+    # 
+    # # 3) Download CSV completo (solo se consentito)
+    # if can_download:
+    #     export_params = dict(params)
+    #     export_params.pop("limit", None)
+    #     export_params.pop("offset", None)
+    # 
+    #     csv_bytes = api_get_raw("/auth/export", token, params=export_params)
+    # 
+    #     st.download_button(
+    #         "Scarica CSV (tutti i risultati filtrati)",
+    #         data=csv_bytes,
+    #         file_name="elenchi_export.csv",
+    #         mime="text/csv",
+    #     )
