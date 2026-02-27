@@ -326,17 +326,32 @@ def on_region_change():
     # quando cambia regione: azzera provincia + comune
     st.session_state["provincia_sel"] = []
     st.session_state["comune_sel"] = []
-    st.session_state["_last_region_key"] = tuple(
-        sorted([r.upper() for r in st.session_state.get("regione_sel", [])])
-    )
+
+    raw = st.session_state.get("regione_sel_items", [])  # lista di tuple: (regione, count)
+    reg_list = []
+    for item in raw:
+        if isinstance(item, (tuple, list)) and item:
+            reg_list.append(str(item[0]).upper())
+        else:
+            reg_list.append(str(item).upper())
+
+    st.session_state["_last_region_key"] = tuple(sorted(reg_list))
     st.session_state["_last_province_key"] = tuple()
 
 def on_province_change():
     # quando cambia provincia: azzera comune
     st.session_state["comune_sel"] = []
-    st.session_state["_last_province_key"] = tuple(
-        sorted([p.upper() for p in st.session_state.get("provincia_sel", [])])
-    )
+
+    raw = st.session_state.get("provincia_sel", [])  # lista di tuple: (provincia, count)
+    prov_list = []
+    for item in raw:
+        # item può essere tuple (provincia,count) oppure string (in futuro)
+        if isinstance(item, (tuple, list)) and item:
+            prov_list.append(str(item[0]).upper())
+        else:
+            prov_list.append(str(item).upper())
+
+    st.session_state["_last_province_key"] = tuple(sorted(prov_list))
     
 with st.sidebar:
     st.header("Filtri")
