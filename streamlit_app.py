@@ -234,8 +234,12 @@ st.info(f"Utente: {who.get('username')} — Ruolo: {role or 'n/a'} — Regione: 
 # FACETS (cached) - con conteggi
 # =========================
 @st.cache_data(ttl=600, show_spinner=False)
-def get_province_with_counts(tok: str):
-    js = api_get("/auth/province", tok)
+def get_province_with_counts(tok: str, region_filter: tuple[str, ...]):
+    params = {}
+    if region_filter:
+        params["regione"] = list(region_filter)
+    js = api_get("/auth/province", tok, params=params)
+
     out = []
     for x in js.get("items", []):
         p = x.get("provincia")
@@ -318,9 +322,25 @@ def cached_count(tok: str, params: dict):
 # =========================
 # FILTRI (sidebar)
 # =========================
+def on_region_change():
+    # quando cambia regione: azzera provincia + comune
+    st.session_state["provincia_sel"] = []
+    st.session_state["comune_sel"] = []
+    st.session_state["_last_region_key"] = tuple(
+        sorted([r.upper() for r in st.session_state.get("regione_sel", [])])
+    )
+    st.session_state["_last_province_key"] = tuple()
+
+def on_province_change():
+    # quando cambia provincia: azzera comune
+    st.session_state["comune_sel"] = []
+    st.session_state["_last_province_key"] = tuple(
+        sorted([p.upper() for p in st.session_state.get("provincia_sel", [])])
+    )
+    
 with st.sidebar:
     st.header("Filtri")
-    
+
     # 6) Regione: filtro regione
     reg_items = get_regioni(token)  # lista di tuple: (REGIONE, count)
 
@@ -330,32 +350,29 @@ with st.sidebar:
             "Regione",
             options=reg_items,
             default=[],
+            key="regione_sel_items",
+            on_change=on_region_change,
             format_func=lambda t: f"{t[0]} ({t[1]:,})" if t[1] else f"{t[0]}",
         )
         selected_region = [r for (r, _) in selected_region_items]
-
     else:
         # Non-admin: read-only sulla propria regione
         selected_region = [user_region]
-
-        # Mostro il campo disabilitato (solo estetica/UX)
-        # Se reg_items contiene count, lo mostro; altrimenti solo nome.
         count_map = {r: c for (r, c) in reg_items}
         label = f"{user_region} ({count_map.get(user_region, 0):,})" if user_region else "N/A"
+        st.selectbox("Regione", options=[label], index=0, disabled=True)
 
-        st.selectbox(
-            "Regione",
-            options=[label],
-            index=0,
-            disabled=True,
-        )
+    # region_key: SEMPRE definito (serve dopo per caricare province filtrate)
+    region_key = tuple(sorted([r.upper() for r in (selected_region or [])]))
 
-    # 1) Residenza: Province (con count)
-    prov_items = get_province_with_counts(token)
+    # 1) Residenza: Province (con count) - DIPENDE dalla Regione selezionata
+    prov_items = get_province_with_counts(token, region_key)
+
     selected_province_items = st.multiselect(
         "Provincia",
         options=prov_items,
-        default=[],
+        key="provincia_sel",
+        on_change=on_province_change,
         format_func=lambda t: f"{t[0]} ({t[1]:,})",
     )
     selected_province = [p for (p, _) in selected_province_items]
@@ -366,14 +383,13 @@ with st.sidebar:
         seen = {}
         for p in selected_province:
             for c, n in get_comuni_for_prov_with_counts(token, p):
-                # se un comune appare in più province (raro), sommo i count per presentazione
                 seen[c] = seen.get(c, 0) + int(n)
         comuni_items = sorted(seen.items(), key=lambda x: x[0])
 
     selected_comuni_items = st.multiselect(
         "Comune",
         options=comuni_items,
-        default=[],
+        key="comune_sel",
         format_func=lambda t: f"{t[0]} ({t[1]:,})",
     )
     selected_comuni = [c for (c, _) in selected_comuni_items]
