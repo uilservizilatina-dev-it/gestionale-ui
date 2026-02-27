@@ -284,24 +284,24 @@ def get_comuni_nascita_for_prov_with_counts(tok: str, prov_n: str):
 @st.cache_data(ttl=30, show_spinner=False)
 def get_gg_fasce(tok: str, params: dict):
     p = dict(params)
-    p.pop("limit", None)
-    p.pop("offset", None)
+    # p.pop("limit", None)
+    # p.pop("offset", None)
     p.pop("gg_fascia", None)  # vogliamo il totale complessivo
     return api_get("/auth/gg-fasce", tok, params=p)
 
 @st.cache_data(ttl=30, show_spinner=False)
 def get_stats_sex(tok: str, params: dict):
     p = dict(params)
-    p.pop("limit", None)
-    p.pop("offset", None)
+    # p.pop("limit", None)
+    # p.pop("offset", None)
     p.pop("sesso", None)  # questo grafico DEVE ignorare il filtro sesso
     return api_get("/auth/stats-sex", tok, params=p)
 
 @st.cache_data(ttl=30, show_spinner=False)
 def get_stats_nat(tok: str, params: dict):
     p = dict(params)
-    p.pop("limit", None)
-    p.pop("offset", None)
+    # p.pop("limit", None)
+    # p.pop("offset", None)
     p.pop("nato_estero", None)  # questo grafico DEVE ignorare il filtro italiano/estero
     return api_get("/auth/stats-nat", tok, params=p)
 
@@ -650,12 +650,15 @@ if role == "administrator":
 # =========================
 # QUERY /auth/search
 # =========================
-offset = int(page_number) * int(page_size)
+# offset = int(page_number) * int(page_size)
+# 
+# params = {
+#     "limit": int(page_size),
+#     "offset": int(offset),
+# }
 
-params = {
-    "limit": int(page_size),
-    "offset": int(offset),
-}
+# Parametri base (solo filtri, niente paginazione)
+params = {}
 
 #regione
 if selected_region:
@@ -697,7 +700,8 @@ if selected_gg_codes:
     params["gg_fascia"] = selected_gg_codes
 
 # Totale righe aggiornato (senza limit/offset)
-count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+# count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+count_params = dict(params)
 total_rows = cached_count(token, count_params)
 st.write(f"Totale braccianti (con questi filtri attivi): {total_rows:,}")
 if total_rows == 0:
