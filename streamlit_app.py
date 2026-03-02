@@ -222,6 +222,10 @@ who = cached_whoami(token)
 role = (who.get("role") or "").lower()
 regione = who.get("regione")
 
+scope_level = (who.get("scope_level") or "").lower().strip()
+scope_values_csv = (who.get("scope_values") or "").strip()
+scope_values = [v.strip().upper() for v in scope_values_csv.split(",") if v.strip()]
+
 # =========================
 # RUOLO / REGIONE (per UI e regole)
 # =========================
@@ -357,10 +361,9 @@ with st.sidebar:
     st.header("Filtri")
 
     # 6) Regione: filtro regione
-    reg_items = get_regioni(token)  # lista di tuple: (REGIONE, count)
+    reg_items = get_regioni(token)
 
     if is_admin:
-        # Admin: selezione libera
         selected_region_items = st.multiselect(
             "Regione",
             options=reg_items,
@@ -370,44 +373,69 @@ with st.sidebar:
             format_func=lambda t: f"{t[0]} ({t[1]:,})" if t[1] else f"{t[0]}",
         )
         selected_region = [r for (r, _) in selected_region_items]
-    else:
-        # Non-admin: read-only sulla propria regione
-        selected_region = [user_region]
-        count_map = {r: c for (r, c) in reg_items}
-        label = f"{user_region} ({count_map.get(user_region, 0):,})" if user_region else "N/A"
-        st.selectbox("Regione", options=[label], index=0, disabled=True)
 
-    # region_key: SEMPRE definito (serve dopo per caricare province filtrate)
-    region_key = tuple(sorted([r.upper() for r in (selected_region or [])]))
+    else:
+        if scope_level == "regione":
+            # multi-regione fissa (da WordPress)
+            selected_region = scope_values
+            labels = {r: c for (r, c) in reg_items}
+            fixed = [f"{r} ({labels.get(r, 0):,})" for r in selected_region]
+            st.multiselect("Regione", options=fixed, default=fixed, disabled=True)
+        elif scope_level == "provincia" or scope_level == "comune":
+            # regione non è rilevante come filtro (la ricavi indirettamente)
+            selected_region = []
+            st.caption("Regione: vincolata dal tuo profilo (province/comuni).")
+        else:
+            # fallback legacy
+            selected_region = [user_region]
+            count_map = {r: c for (r, c) in reg_items}
+            label = f"{user_region} ({count_map.get(user_region, 0):,})" if user_region else "N/A"
+            st.selectbox("Regione", options=[label], index=0, disabled=True)
 
     # 1) Residenza: Province (con count) - DIPENDE dalla Regione selezionata
+    region_key = tuple(sorted([r.upper() for r in (selected_region or [])]))
     prov_items = get_province_with_counts(token, region_key)
 
-    selected_province_items = st.multiselect(
-        "Provincia",
-        options=prov_items,
-        key="provincia_sel",
-        on_change=on_province_change,
-        format_func=lambda t: f"{t[0]} ({t[1]:,})",
-    )
-    selected_province = [p for (p, _) in selected_province_items]
+    if (not is_admin) and scope_level == "provincia":
+        # province fisse da WordPress
+        fixed_items = [(p, 0) for p in scope_values]
+        st.multiselect("Provincia", options=fixed_items, default=fixed_items, disabled=True,
+                       format_func=lambda t: t[0])
+        selected_province = scope_values
+    else:
+        selected_province_items = st.multiselect(
+            "Provincia",
+            options=prov_items,
+            key="provincia_sel",
+            on_change=on_province_change,
+            format_func=lambda t: f"{t[0]} ({t[1]:,})",
+        )
+        selected_province = [p for (p, _) in selected_province_items]
 
-    # 2) Residenza: Comuni (dipende dalle province selezionate) + count
     comuni_items = []
-    if selected_province:
-        seen = {}
-        for p in selected_province:
-            for c, n in get_comuni_for_prov_with_counts(token, p):
-                seen[c] = seen.get(c, 0) + int(n)
-        comuni_items = sorted(seen.items(), key=lambda x: x[0])
 
-    selected_comuni_items = st.multiselect(
-        "Comune",
-        options=comuni_items,
-        key="comune_sel",
-        format_func=lambda t: f"{t[0]} ({t[1]:,})",
-    )
-    selected_comuni = [c for (c, _) in selected_comuni_items]
+    if (not is_admin) and scope_level == "comune":
+        # lista fissa
+        comuni_items = [(c, 0) for c in scope_values]  # count opzionale
+        selected_comuni = scope_values
+        st.multiselect("Comune", options=comuni_items, default=comuni_items, disabled=True,
+                       format_func=lambda t: f"{t[0]}")
+    else:
+        # logica attuale (dipende da selected_province)
+        if selected_province:
+            seen = {}
+            for p in selected_province:
+                for c, n in get_comuni_for_prov_with_counts(token, p):
+                    seen[c] = seen.get(c, 0) + int(n)
+            comuni_items = sorted(seen.items(), key=lambda x: x[0])
+
+        selected_comuni_items = st.multiselect(
+            "Comune",
+            options=comuni_items,
+            default=[],
+            format_func=lambda t: f"{t[0]} ({t[1]:,})",
+        )
+        selected_comuni = [c for (c, _) in selected_comuni_items]
 
     st.divider()
 
