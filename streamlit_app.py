@@ -385,7 +385,8 @@ with st.sidebar:
             # Regione derivata dallo scope (province/comuni) -> mostrala fissa
             inferred_regions = [r for (r, _) in reg_items]  # già filtrate dal backend in base allo scope
             reg_label = ", ".join(inferred_regions) if inferred_regions else (user_region or "N/A")
-            st.selectbox("Regione", options=[f"{reg_label} - Vincolata dal tuo profilo."], index=0, disabled=True)
+            st.caption(f"Regione {reg_label} - Vincolata dal tuo profilo.")
+            #st.selectbox("Regione", options=[f"{reg_label} - Vincolata dal tuo profilo."], index=0, disabled=True)
 
             # come filtro NON serve (scope già restringe)
             selected_region = []
@@ -404,7 +405,8 @@ with st.sidebar:
         # Provincia derivata dai comuni consentiti -> mostrala fissa, niente filtro
         prov_names = [p for (p, _) in prov_items]
         prov_label = ", ".join(prov_names) if prov_names else "N/A"
-        st.selectbox("Provincia", options=[f"{prov_label} - Vincolata dal tuo profilo."], index=0, disabled=True)
+        st.caption(f"Provincia {prov_label} - Vincolata dal tuo profilo.")
+        #st.selectbox("Provincia", options=[f"{prov_label} - Vincolata dal tuo profilo."], index=0, disabled=True)
 
         # NON applicare filtro provincia lato UI (lo scope comune già restringe)
         selected_province = []
