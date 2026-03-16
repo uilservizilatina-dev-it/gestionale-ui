@@ -290,13 +290,11 @@ def get_gg_fasce(tok: str, params: dict):
     p = dict(params)
     # p.pop("limit", None)
     # p.pop("offset", None)
-    p.pop("gg_fascia", None)  # vogliamo il totale complessivo
     return api_get("/auth/gg-fasce", tok, params=p)
 
 @st.cache_data(ttl=30, show_spinner=False)
 def get_eta_fasce(tok: str, params: dict):
     p = dict(params)
-    p.pop("eta_fascia", None)  # vogliamo il totale complessivo della distribuzione età
     return api_get("/auth/eta-fasce", tok, params=p)
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -304,7 +302,6 @@ def get_stats_sex(tok: str, params: dict):
     p = dict(params)
     # p.pop("limit", None)
     # p.pop("offset", None)
-    p.pop("sesso", None)  # questo grafico DEVE ignorare il filtro sesso
     return api_get("/auth/stats-sex", tok, params=p)
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -312,7 +309,6 @@ def get_stats_nat(tok: str, params: dict):
     p = dict(params)
     # p.pop("limit", None)
     # p.pop("offset", None)
-    p.pop("nato_estero", None)  # questo grafico DEVE ignorare il filtro italiano/estero
     return api_get("/auth/stats-nat", tok, params=p)
 
 
