@@ -776,8 +776,8 @@ if total_rows == 0:
 # COLORI FISSI GRAFICI
 # =========================
 SEX_COLOR_MAP = {
-    "Maschi": "#87CEFA",     # celeste chiaro
-    "Femmine": "#1E90FF",    # blu più intenso
+    "Maschi": "#87CEFA",
+    "Femmine": "#1E90FF",
 }
 
 NAT_COLOR_MAP = {
@@ -830,23 +830,29 @@ with c1:
         "CategoriaBase": ["Maschi", "Femmine"],
         "Valore": [sex_stats["count"]["M"], sex_stats["count"]["F"]],
     })
-    df1["CategoriaLabel"] = df1.apply(lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1)
 
-    sex_color_map_labels = {
-        row["CategoriaLabel"]: SEX_COLOR_MAP[row["CategoriaBase"]]
-        for _, row in df1.iterrows()
-    }
+    df1["CategoriaLabel"] = df1.apply(
+        lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1
+    )
+
+    legend_map = dict(zip(df1["CategoriaBase"], df1["CategoriaLabel"]))
 
     fig1 = px.pie(
         df1,
-        names="CategoriaLabel",
+        names="CategoriaBase",
         values="Valore",
-        color="CategoriaLabel",
-        color_discrete_map=sex_color_map_labels,
+        color="CategoriaBase",
+        color_discrete_map=SEX_COLOR_MAP,
         hole=0.4,
         title="Lavoratori per sesso"
     )
-    fig1.update_traces(textinfo="percent+label")
+
+    fig1.update_traces(textinfo="label+percent")
+
+    fig1.for_each_trace(
+        lambda t: t.update(name=legend_map.get(t.name, t.name))
+    )
+
     st.plotly_chart(fig1, width="stretch")
 
 with c2:
@@ -854,23 +860,29 @@ with c2:
         "CategoriaBase": ["Maschi", "Femmine"],
         "Valore": [sex_stats["gg_tot"]["M"], sex_stats["gg_tot"]["F"]],
     })
-    df2["CategoriaLabel"] = df2.apply(lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1)
 
-    sex_color_map_labels_2 = {
-        row["CategoriaLabel"]: SEX_COLOR_MAP[row["CategoriaBase"]]
-        for _, row in df2.iterrows()
-    }
+    df2["CategoriaLabel"] = df2.apply(
+        lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1
+    )
+
+    legend_map = dict(zip(df2["CategoriaBase"], df2["CategoriaLabel"]))
 
     fig2 = px.pie(
         df2,
-        names="CategoriaLabel",
+        names="CategoriaBase",
         values="Valore",
-        color="CategoriaLabel",
-        color_discrete_map=sex_color_map_labels_2,
+        color="CategoriaBase",
+        color_discrete_map=SEX_COLOR_MAP,
         hole=0.4,
         title="Giornate lavorate per sesso (GG TOT)"
     )
-    fig2.update_traces(textinfo="percent+label")
+
+    fig2.update_traces(textinfo="label+percent")
+
+    fig2.for_each_trace(
+        lambda t: t.update(name=legend_map.get(t.name, t.name))
+    )
+
     st.plotly_chart(fig2, width="stretch")
 
 # =========================
@@ -883,23 +895,29 @@ with c3:
         "CategoriaBase": ["Italiani", "Esteri"],
         "Valore": [nat_stats["count"]["ITALIANI"], nat_stats["count"]["ESTERI"]],
     })
-    df3["CategoriaLabel"] = df3.apply(lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1)
 
-    nat_color_map_labels = {
-        row["CategoriaLabel"]: NAT_COLOR_MAP[row["CategoriaBase"]]
-        for _, row in df3.iterrows()
-    }
+    df3["CategoriaLabel"] = df3.apply(
+        lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1
+    )
+
+    legend_map_3 = dict(zip(df3["CategoriaBase"], df3["CategoriaLabel"]))
 
     fig3 = px.pie(
         df3,
-        names="CategoriaLabel",
+        names="CategoriaBase",
         values="Valore",
-        color="CategoriaLabel",
-        color_discrete_map=nat_color_map_labels,
+        color="CategoriaBase",
+        color_discrete_map=NAT_COLOR_MAP,
         hole=0.4,
         title="Lavoratori italiani vs esteri"
     )
-    fig3.update_traces(textinfo="percent+label")
+
+    fig3.update_traces(textinfo="label+percent")
+
+    fig3.for_each_trace(
+        lambda t: t.update(name=legend_map_3.get(t.name, t.name))
+    )
+
     st.plotly_chart(fig3, width="stretch")
 
 with c4:
@@ -907,23 +925,29 @@ with c4:
         "CategoriaBase": ["Italiani", "Esteri"],
         "Valore": [nat_stats["gg_tot"]["ITALIANI"], nat_stats["gg_tot"]["ESTERI"]],
     })
-    df4["CategoriaLabel"] = df4.apply(lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1)
 
-    nat_color_map_labels_2 = {
-        row["CategoriaLabel"]: NAT_COLOR_MAP[row["CategoriaBase"]]
-        for _, row in df4.iterrows()
-    }
+    df4["CategoriaLabel"] = df4.apply(
+        lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1
+    )
+
+    legend_map_4 = dict(zip(df4["CategoriaBase"], df4["CategoriaLabel"]))
 
     fig4 = px.pie(
         df4,
-        names="CategoriaLabel",
+        names="CategoriaBase",
         values="Valore",
-        color="CategoriaLabel",
-        color_discrete_map=nat_color_map_labels_2,
+        color="CategoriaBase",
+        color_discrete_map=NAT_COLOR_MAP,
         hole=0.4,
         title="Giornate lavorate italiani vs esteri (GG TOT)"
     )
-    fig4.update_traces(textinfo="percent+label")
+
+    fig4.update_traces(textinfo="label+percent")
+
+    fig4.for_each_trace(
+        lambda t: t.update(name=legend_map_4.get(t.name, t.name))
+    )
+
     st.plotly_chart(fig4, width="stretch")
 
 # =========================
@@ -934,6 +958,7 @@ c5, c6 = st.columns(2)
 with c5:
     gg_total = gg_js.get("total", 0)
     gg_counts = gg_js.get("counts", {}) or {}
+
     gg_order = ["10 o meno", "11–50", "51–100", "101–150", "151–180", "Più di 180"]
 
     gg_labels = {
@@ -957,28 +982,36 @@ with c5:
             "CategoriaBase": ordered_gg_labels,
             "Valore": ordered_gg_values
         })
-        df_gg["CategoriaLabel"] = df_gg.apply(lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1)
 
-        gg_color_map_labels = {
-            row["CategoriaLabel"]: GG_COLOR_MAP[row["CategoriaBase"]]
-            for _, row in df_gg.iterrows()
-        }
+        df_gg["CategoriaLabel"] = df_gg.apply(
+            lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1
+        )
+
+        legend_map_gg = dict(zip(df_gg["CategoriaBase"], df_gg["CategoriaLabel"]))
 
         fig_gg = px.pie(
             df_gg,
-            names="CategoriaLabel",
+            names="CategoriaBase",
             values="Valore",
-            color="CategoriaLabel",
-            color_discrete_map=gg_color_map_labels,
+            color="CategoriaBase",
+            color_discrete_map=GG_COLOR_MAP,
+            category_orders={"CategoriaBase": gg_order},
             hole=0.4,
             title="Distribuzione giornate lavorate (GG TOT)"
         )
-        fig_gg.update_traces(textinfo="percent+label")
+
+        fig_gg.update_traces(textinfo="label+percent")
+
+        fig_gg.for_each_trace(
+            lambda t: t.update(name=legend_map_gg.get(t.name, t.name))
+        )
+
         st.plotly_chart(fig_gg, width="stretch")
 
 with c6:
     eta_total = eta_js.get("total", 0)
     eta_counts = eta_js.get("counts", {}) or {}
+
     eta_order = ["≤ 20", "21–40", "41–60", "> 60"]
 
     eta_labels = {
@@ -1000,23 +1033,30 @@ with c6:
             "CategoriaBase": ordered_eta_labels,
             "Valore": ordered_eta_values
         })
-        df_eta["CategoriaLabel"] = df_eta.apply(lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1)
 
-        eta_color_map_labels = {
-            row["CategoriaLabel"]: ETA_COLOR_MAP[row["CategoriaBase"]]
-            for _, row in df_eta.iterrows()
-        }
+        df_eta["CategoriaLabel"] = df_eta.apply(
+            lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1
+        )
+
+        legend_map_eta = dict(zip(df_eta["CategoriaBase"], df_eta["CategoriaLabel"]))
 
         fig_eta = px.pie(
             df_eta,
-            names="CategoriaLabel",
+            names="CategoriaBase",
             values="Valore",
-            color="CategoriaLabel",
-            color_discrete_map=eta_color_map_labels,
+            color="CategoriaBase",
+            color_discrete_map=ETA_COLOR_MAP,
+            category_orders={"CategoriaBase": eta_order},
             hole=0.4,
             title="Distribuzione fasce d'età"
         )
-        fig_eta.update_traces(textinfo="percent+label")
+
+        fig_eta.update_traces(textinfo="label+percent")
+
+        fig_eta.for_each_trace(
+            lambda t: t.update(name=legend_map_eta.get(t.name, t.name))
+        )
+
         st.plotly_chart(fig_eta, width="stretch")
     
 # st.divider()        
