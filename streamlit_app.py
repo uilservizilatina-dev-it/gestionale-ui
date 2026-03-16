@@ -311,7 +311,6 @@ def get_stats_nat(tok: str, params: dict):
     # p.pop("offset", None)
     return api_get("/auth/stats-nat", tok, params=p)
 
-
 # =========================
 # COUNT totale (cached)
 # =========================
@@ -769,32 +768,42 @@ if total_rows == 0:
     st.stop()
 
 # =========================
+# PALETTE UILA
+# =========================
+UILA_BLUE = "#123B7A"        # blu istituzionale
+UILA_AZURE = "#7DB7E5"       # azzurro chiaro coerente col logo
+UILA_GREEN = "#2F8F46"       # verde UILA
+UILA_GREEN_LIGHT = "#7BCB8C" # verde chiaro
+UILA_RED = "#C62828"         # rosso UILA, da usare come accento
+UILA_RED_LIGHT = "#E57373"   # rosso chiaro
+
+# =========================
 # COLORI FISSI GRAFICI
 # =========================
 SEX_COLOR_MAP = {
-    "Maschi": "#87CEFA",
-    "Femmine": "#1E90FF",
+    "Maschi": UILA_AZURE,
+    "Femmine": UILA_BLUE,
 }
 
 NAT_COLOR_MAP = {
-    "Italiani": "#87CEFA",
-    "Esteri": "#1E90FF",
+    "Italiani": UILA_GREEN,
+    "Esteri": UILA_BLUE,
 }
 
 GG_COLOR_MAP = {
-    "10 o meno": "#87CEFA",
-    "11–50": "#5DADE2",
-    "51–100": "#3498DB",
-    "101–150": "#2E86C1",
-    "151–180": "#1F618D",
-    "Più di 180": "#154360",
+    "10 o meno": UILA_AZURE,
+    "11–50": "#5FA6DD",
+    "51–100": UILA_BLUE,
+    "101–150": "#4F8F3A",
+    "151–180": UILA_GREEN,
+    "Più di 180": UILA_RED,
 }
 
 ETA_COLOR_MAP = {
-    "≤ 20": "#87CEFA",
-    "21–40": "#5DADE2",
-    "41–60": "#3498DB",
-    "> 60": "#1E90FF",
+    "≤ 20": UILA_AZURE,
+    "21–40": UILA_GREEN_LIGHT,
+    "41–60": UILA_GREEN,
+    "> 60": UILA_RED,
 }
 # with st.spinner("Caricamento dati..."):
 #    data = api_get("/auth/search", token, params=params)
