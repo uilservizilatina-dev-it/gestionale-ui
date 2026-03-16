@@ -294,6 +294,12 @@ def get_gg_fasce(tok: str, params: dict):
     return api_get("/auth/gg-fasce", tok, params=p)
 
 @st.cache_data(ttl=30, show_spinner=False)
+def get_eta_fasce(tok: str, params: dict):
+    p = dict(params)
+    p.pop("eta_fascia", None)  # vogliamo il totale complessivo della distribuzione età
+    return api_get("/auth/eta-fasce", tok, params=p)
+
+@st.cache_data(ttl=30, show_spinner=False)
 def get_stats_sex(tok: str, params: dict):
     p = dict(params)
     # p.pop("limit", None)
@@ -774,76 +780,145 @@ st.subheader("Statistiche")
 
 sex_stats = get_stats_sex(token, params)
 nat_stats = get_stats_nat(token, params)
+gg_js = get_gg_fasce(token, params)
+eta_js = get_eta_fasce(token, params)
 
-# layout: 3 in linea (desktop), su mobile Streamlit li impila
-c1, c2, c3 = st.columns(3)
-# 1) % lavoratori M/F
+# =========================
+# RIGA 1: sesso
+# =========================
+c1, c2 = st.columns(2)
+
 with c1:
     df1 = pd.DataFrame({
         "Categoria": ["Maschi", "Femmine"],
         "Valore": [sex_stats["count"]["M"], sex_stats["count"]["F"]],
     })
-    fig1 = px.pie(df1, names="Categoria", values="Valore", hole=0.4, title="Lavoratori per sesso")
+    fig1 = px.pie(
+        df1,
+        names="Categoria",
+        values="Valore",
+        hole=0.4,
+        title="Lavoratori per sesso"
+    )
     fig1.update_traces(textinfo="percent+label")
     st.plotly_chart(fig1, width="stretch")
 
-# 2) % GG TOT per M/F
 with c2:
     df2 = pd.DataFrame({
         "Categoria": ["Maschi", "Femmine"],
         "Valore": [sex_stats["gg_tot"]["M"], sex_stats["gg_tot"]["F"]],
     })
-    fig2 = px.pie(df2, names="Categoria", values="Valore", hole=0.4, title="Giornate lavorate per sesso (GG TOT)")
+    fig2 = px.pie(
+        df2,
+        names="Categoria",
+        values="Valore",
+        hole=0.4,
+        title="Giornate lavorate per sesso (GG TOT)"
+    )
     fig2.update_traces(textinfo="percent+label")
     st.plotly_chart(fig2, width="stretch")
 
-# 3) % lavoratori Italiani/Esteri
+# =========================
+# RIGA 2: italiani / esteri
+# =========================
+c3, c4 = st.columns(2)
+
 with c3:
     df3 = pd.DataFrame({
         "Categoria": ["Italiani", "Esteri"],
         "Valore": [nat_stats["count"]["ITALIANI"], nat_stats["count"]["ESTERI"]],
     })
-    fig3 = px.pie(df3, names="Categoria", values="Valore", hole=0.4, title="Lavoratori italiani vs esteri")
+    fig3 = px.pie(
+        df3,
+        names="Categoria",
+        values="Valore",
+        hole=0.4,
+        title="Lavoratori italiani vs esteri"
+    )
     fig3.update_traces(textinfo="percent+label")
     st.plotly_chart(fig3, width="stretch")
 
-# 4) seconda riga: % GG TOT Italiani/Esteri
-c4, _, _ = st.columns(3)
 with c4:
     df4 = pd.DataFrame({
         "Categoria": ["Italiani", "Esteri"],
         "Valore": [nat_stats["gg_tot"]["ITALIANI"], nat_stats["gg_tot"]["ESTERI"]],
     })
-    fig4 = px.pie(df4, names="Categoria", values="Valore", hole=0.4, title="Giornate lavorate italiani vs esteri (GG TOT)")
+    fig4 = px.pie(
+        df4,
+        names="Categoria",
+        values="Valore",
+        hole=0.4,
+        title="Giornate lavorate italiani vs esteri (GG TOT)"
+    )
     fig4.update_traces(textinfo="percent+label")
     st.plotly_chart(fig4, width="stretch")
 
-# 2) Grafico GG (se hai plotly installato; altrimenti cambiamo a bar_chart)
-st.subheader("Distribuzione giornate lavorate (GG TOT)")
+# =========================
+# RIGA 3: distribuzioni
+# =========================
+c5, c6 = st.columns(2)
 
-gg_js = get_gg_fasce(token, params)
-total = gg_js.get("total", 0)
-counts = gg_js.get("counts", {}) or {}
+with c5:
+    gg_total = gg_js.get("total", 0)
+    gg_counts = gg_js.get("counts", {}) or {}
 
-labels = {
-    "LE10": "10 o meno",
-    "11_50": "11–50",
-    "51_100": "51–100",
-    "101_150": "101–150",
-    "151_180": "151–180",
-    "GT180": "Più di 180",
-}
+    gg_labels = {
+        "LE10": "10 o meno",
+        "11_50": "11–50",
+        "51_100": "51–100",
+        "101_150": "101–150",
+        "151_180": "151–180",
+        "GT180": "Più di 180",
+    }
 
-data = {labels[k]: int(v) for k, v in counts.items() if int(v or 0) > 0}
+    gg_data = {gg_labels[k]: int(v) for k, v in gg_counts.items() if int(v or 0) > 0}
 
-if total == 0 or not data:
-    st.caption("Nessun dato disponibile con i filtri correnti.")
-else:
-    df_pie = pd.DataFrame({"Fascia": list(data.keys()), "Conteggio": list(data.values())})
-    fig = px.pie(df_pie, names="Fascia", values="Conteggio", hole=0.4)
-    fig.update_traces(textinfo="percent+label")
-    st.plotly_chart(fig, width="stretch")
-    st.caption(f"Totale considerato: {int(total):,}")
+    if gg_total == 0 or not gg_data:
+        st.caption("Nessun dato disponibile con i filtri correnti.")
+    else:
+        df_gg = pd.DataFrame({
+            "Categoria": list(gg_data.keys()),
+            "Valore": list(gg_data.values())
+        })
+        fig_gg = px.pie(
+            df_gg,
+            names="Categoria",
+            values="Valore",
+            hole=0.4,
+            title="Distribuzione giornate lavorate (GG TOT)"
+        )
+        fig_gg.update_traces(textinfo="percent+label")
+        st.plotly_chart(fig_gg, width="stretch")
+
+with c6:
+    eta_total = eta_js.get("total", 0)
+    eta_counts = eta_js.get("counts", {}) or {}
+
+    eta_labels = {
+        "LE20": "≤ 20",
+        "21_40": "21–40",
+        "41_60": "41–60",
+        "GT60": "> 60",
+    }
+
+    eta_data = {eta_labels[k]: int(v) for k, v in eta_counts.items() if int(v or 0) > 0}
+
+    if eta_total == 0 or not eta_data:
+        st.caption("Nessun dato disponibile con i filtri correnti.")
+    else:
+        df_eta = pd.DataFrame({
+            "Categoria": list(eta_data.keys()),
+            "Valore": list(eta_data.values())
+        })
+        fig_eta = px.pie(
+            df_eta,
+            names="Categoria",
+            values="Valore",
+            hole=0.4,
+            title="Distribuzione fasce d'età"
+        )
+        fig_eta.update_traces(textinfo="percent+label")
+        st.plotly_chart(fig_eta, width="stretch")
     
 # st.divider()        
 # st.subheader("Tabella")
