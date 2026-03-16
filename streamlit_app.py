@@ -321,13 +321,15 @@ def get_stats_nat(tok: str, params: dict):
 # =========================
 @st.cache_data(ttl=30, show_spinner=False)
 def cached_count(tok: str, params: dict):
-    # rende hashabile per la cache
     safe = {}
     for k, v in params.items():
         safe[k] = tuple(v) if isinstance(v, list) else v
     real = {k: (list(v) if isinstance(v, tuple) else v) for k, v in safe.items()}
     js = api_get("/auth/count", tok, params=real)
-    return int(js.get("total", 0))
+    return {
+        "total": int(js.get("total", 0)),
+        "total_gg": int(js.get("total_gg", 0)),
+    }
 
 # =========================
 # FILTRI (sidebar)
@@ -757,8 +759,15 @@ if selected_gg_codes:
 # Totale righe aggiornato (senza limit/offset)
 # count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
 count_params = dict(params)
-total_rows = cached_count(token, count_params)
-st.write(f"Totale braccianti (con questi filtri attivi): {total_rows:,}")
+count_info = cached_count(token, count_params)
+total_rows = count_info["total"]
+total_gg = count_info["total_gg"]
+
+st.write(
+    f"Totale braccianti (con questi filtri attivi): {total_rows:,} "
+    f"— Totale giornate lavorate: {total_gg:,}"
+)
+
 if total_rows == 0:
     st.warning("Nessun bracciante trovato con i filtri correnti.")
     st.stop()
@@ -818,15 +827,22 @@ c1, c2 = st.columns(2)
 
 with c1:
     df1 = pd.DataFrame({
-        "Categoria": ["Maschi", "Femmine"],
+        "CategoriaBase": ["Maschi", "Femmine"],
         "Valore": [sex_stats["count"]["M"], sex_stats["count"]["F"]],
     })
+    df1["CategoriaLabel"] = df1.apply(lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1)
+
+    sex_color_map_labels = {
+        row["CategoriaLabel"]: SEX_COLOR_MAP[row["CategoriaBase"]]
+        for _, row in df1.iterrows()
+    }
+
     fig1 = px.pie(
         df1,
-        names="Categoria",
+        names="CategoriaLabel",
         values="Valore",
-        color="Categoria",
-        color_discrete_map=SEX_COLOR_MAP,
+        color="CategoriaLabel",
+        color_discrete_map=sex_color_map_labels,
         hole=0.4,
         title="Lavoratori per sesso"
     )
@@ -835,15 +851,22 @@ with c1:
 
 with c2:
     df2 = pd.DataFrame({
-        "Categoria": ["Maschi", "Femmine"],
+        "CategoriaBase": ["Maschi", "Femmine"],
         "Valore": [sex_stats["gg_tot"]["M"], sex_stats["gg_tot"]["F"]],
     })
+    df2["CategoriaLabel"] = df2.apply(lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1)
+
+    sex_color_map_labels_2 = {
+        row["CategoriaLabel"]: SEX_COLOR_MAP[row["CategoriaBase"]]
+        for _, row in df2.iterrows()
+    }
+
     fig2 = px.pie(
         df2,
-        names="Categoria",
+        names="CategoriaLabel",
         values="Valore",
-        color="Categoria",
-        color_discrete_map=SEX_COLOR_MAP,
+        color="CategoriaLabel",
+        color_discrete_map=sex_color_map_labels_2,
         hole=0.4,
         title="Giornate lavorate per sesso (GG TOT)"
     )
@@ -857,15 +880,22 @@ c3, c4 = st.columns(2)
 
 with c3:
     df3 = pd.DataFrame({
-        "Categoria": ["Italiani", "Esteri"],
+        "CategoriaBase": ["Italiani", "Esteri"],
         "Valore": [nat_stats["count"]["ITALIANI"], nat_stats["count"]["ESTERI"]],
     })
+    df3["CategoriaLabel"] = df3.apply(lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1)
+
+    nat_color_map_labels = {
+        row["CategoriaLabel"]: NAT_COLOR_MAP[row["CategoriaBase"]]
+        for _, row in df3.iterrows()
+    }
+
     fig3 = px.pie(
         df3,
-        names="Categoria",
+        names="CategoriaLabel",
         values="Valore",
-        color="Categoria",
-        color_discrete_map=NAT_COLOR_MAP,
+        color="CategoriaLabel",
+        color_discrete_map=nat_color_map_labels,
         hole=0.4,
         title="Lavoratori italiani vs esteri"
     )
@@ -874,15 +904,22 @@ with c3:
 
 with c4:
     df4 = pd.DataFrame({
-        "Categoria": ["Italiani", "Esteri"],
+        "CategoriaBase": ["Italiani", "Esteri"],
         "Valore": [nat_stats["gg_tot"]["ITALIANI"], nat_stats["gg_tot"]["ESTERI"]],
     })
+    df4["CategoriaLabel"] = df4.apply(lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1)
+
+    nat_color_map_labels_2 = {
+        row["CategoriaLabel"]: NAT_COLOR_MAP[row["CategoriaBase"]]
+        for _, row in df4.iterrows()
+    }
+
     fig4 = px.pie(
         df4,
-        names="Categoria",
+        names="CategoriaLabel",
         values="Valore",
-        color="Categoria",
-        color_discrete_map=NAT_COLOR_MAP,
+        color="CategoriaLabel",
+        color_discrete_map=nat_color_map_labels_2,
         hole=0.4,
         title="Giornate lavorate italiani vs esteri (GG TOT)"
     )
@@ -897,6 +934,7 @@ c5, c6 = st.columns(2)
 with c5:
     gg_total = gg_js.get("total", 0)
     gg_counts = gg_js.get("counts", {}) or {}
+    gg_order = ["10 o meno", "11–50", "51–100", "101–150", "151–180", "Più di 180"]
 
     gg_labels = {
         "LE10": "10 o meno",
@@ -907,21 +945,31 @@ with c5:
         "GT180": "Più di 180",
     }
 
-    gg_data = {gg_labels[k]: int(v) for k, v in gg_counts.items() if int(v or 0) > 0}
+    gg_data_map = {gg_labels[k]: int(v) for k, v in gg_counts.items() if int(v or 0) > 0}
 
-    if gg_total == 0 or not gg_data:
+    ordered_gg_labels = [label for label in gg_order if label in gg_data_map]
+    ordered_gg_values = [gg_data_map[label] for label in ordered_gg_labels]
+
+    if gg_total == 0 or not ordered_gg_labels:
         st.caption("Nessun dato disponibile con i filtri correnti.")
     else:
         df_gg = pd.DataFrame({
-            "Categoria": list(gg_data.keys()),
-            "Valore": list(gg_data.values())
+            "CategoriaBase": ordered_gg_labels,
+            "Valore": ordered_gg_values
         })
+        df_gg["CategoriaLabel"] = df_gg.apply(lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1)
+
+        gg_color_map_labels = {
+            row["CategoriaLabel"]: GG_COLOR_MAP[row["CategoriaBase"]]
+            for _, row in df_gg.iterrows()
+        }
+
         fig_gg = px.pie(
             df_gg,
-            names="Categoria",
+            names="CategoriaLabel",
             values="Valore",
-            color="Categoria",
-            color_discrete_map=GG_COLOR_MAP,
+            color="CategoriaLabel",
+            color_discrete_map=gg_color_map_labels,
             hole=0.4,
             title="Distribuzione giornate lavorate (GG TOT)"
         )
@@ -931,6 +979,7 @@ with c5:
 with c6:
     eta_total = eta_js.get("total", 0)
     eta_counts = eta_js.get("counts", {}) or {}
+    eta_order = ["≤ 20", "21–40", "41–60", "> 60"]
 
     eta_labels = {
         "LE20": "≤ 20",
@@ -939,21 +988,31 @@ with c6:
         "GT60": "> 60",
     }
 
-    eta_data = {eta_labels[k]: int(v) for k, v in eta_counts.items() if int(v or 0) > 0}
+    eta_data_map = {eta_labels[k]: int(v) for k, v in eta_counts.items() if int(v or 0) > 0}
 
-    if eta_total == 0 or not eta_data:
+    ordered_eta_labels = [label for label in eta_order if label in eta_data_map]
+    ordered_eta_values = [eta_data_map[label] for label in ordered_eta_labels]
+
+    if eta_total == 0 or not ordered_eta_labels:
         st.caption("Nessun dato disponibile con i filtri correnti.")
     else:
         df_eta = pd.DataFrame({
-            "Categoria": list(eta_data.keys()),
-            "Valore": list(eta_data.values())
+            "CategoriaBase": ordered_eta_labels,
+            "Valore": ordered_eta_values
         })
+        df_eta["CategoriaLabel"] = df_eta.apply(lambda r: f"{r['CategoriaBase']} ({int(r['Valore']):,})", axis=1)
+
+        eta_color_map_labels = {
+            row["CategoriaLabel"]: ETA_COLOR_MAP[row["CategoriaBase"]]
+            for _, row in df_eta.iterrows()
+        }
+
         fig_eta = px.pie(
             df_eta,
-            names="Categoria",
+            names="CategoriaLabel",
             values="Valore",
-            color="Categoria",
-            color_discrete_map=ETA_COLOR_MAP,
+            color="CategoriaLabel",
+            color_discrete_map=eta_color_map_labels,
             hole=0.4,
             title="Distribuzione fasce d'età"
         )
