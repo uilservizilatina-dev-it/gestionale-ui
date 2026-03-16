@@ -763,6 +763,34 @@ if total_rows == 0:
     st.warning("Nessun bracciante trovato con i filtri correnti.")
     st.stop()
 
+# =========================
+# COLORI FISSI GRAFICI
+# =========================
+SEX_COLOR_MAP = {
+    "Maschi": "#87CEFA",     # celeste chiaro
+    "Femmine": "#1E90FF",    # blu più intenso
+}
+
+NAT_COLOR_MAP = {
+    "Italiani": "#87CEFA",
+    "Esteri": "#1E90FF",
+}
+
+GG_COLOR_MAP = {
+    "10 o meno": "#87CEFA",
+    "11–50": "#5DADE2",
+    "51–100": "#3498DB",
+    "101–150": "#2E86C1",
+    "151–180": "#1F618D",
+    "Più di 180": "#154360",
+}
+
+ETA_COLOR_MAP = {
+    "≤ 20": "#87CEFA",
+    "21–40": "#5DADE2",
+    "41–60": "#3498DB",
+    "> 60": "#1E90FF",
+}
 # with st.spinner("Caricamento dati..."):
 #    data = api_get("/auth/search", token, params=params)
 
@@ -797,6 +825,8 @@ with c1:
         df1,
         names="Categoria",
         values="Valore",
+        color="Categoria",
+        color_discrete_map=SEX_COLOR_MAP,
         hole=0.4,
         title="Lavoratori per sesso"
     )
@@ -812,6 +842,8 @@ with c2:
         df2,
         names="Categoria",
         values="Valore",
+        color="Categoria",
+        color_discrete_map=SEX_COLOR_MAP,
         hole=0.4,
         title="Giornate lavorate per sesso (GG TOT)"
     )
@@ -832,6 +864,8 @@ with c3:
         df3,
         names="Categoria",
         values="Valore",
+        color="Categoria",
+        color_discrete_map=NAT_COLOR_MAP,
         hole=0.4,
         title="Lavoratori italiani vs esteri"
     )
@@ -847,6 +881,8 @@ with c4:
         df4,
         names="Categoria",
         values="Valore",
+        color="Categoria",
+        color_discrete_map=NAT_COLOR_MAP,
         hole=0.4,
         title="Giornate lavorate italiani vs esteri (GG TOT)"
     )
@@ -884,6 +920,8 @@ with c5:
             df_gg,
             names="Categoria",
             values="Valore",
+            color="Categoria",
+            color_discrete_map=GG_COLOR_MAP,
             hole=0.4,
             title="Distribuzione giornate lavorate (GG TOT)"
         )
@@ -914,6 +952,8 @@ with c6:
             df_eta,
             names="Categoria",
             values="Valore",
+            color="Categoria",
+            color_discrete_map=ETA_COLOR_MAP,
             hole=0.4,
             title="Distribuzione fasce d'età"
         )
