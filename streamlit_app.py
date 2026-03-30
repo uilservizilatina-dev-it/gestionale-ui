@@ -742,13 +742,24 @@ if role == "administrator":
                 st.stop()
 
             # 12) CSV: None -> stringa vuota
-            csv_bytes = df_x.to_csv(index=False).encode("utf-8")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_csv:
+                tmp_csv_path = tmp_csv.name
+
+            df_x.to_csv(tmp_csv_path, index=False, encoding="utf-8")
 
         with st.spinner("Invio CSV al backend (job async)"):
-            files = {"file": ("elenchi.csv", csv_bytes, "text/csv")}
-            st.write(f"Dimensione CSV generato: {len(csv_bytes) / (1024 * 1024):.2f} MB")
-            res = api_post_multipart("/admin/import", token, files=files, data={"mode": mode})
+            file_size_mb = os.path.getsize(tmp_csv_path) / (1024 * 1024)
+            st.write(f"Dimensione CSV generato: {file_size_mb:.2f} MB")
 
+            with open(tmp_csv_path, "rb") as f:
+                files = {"file": ("elenchi.csv", f, "text/csv")}
+                res = api_post_multipart("/admin/import", token, files=files, data={"mode": mode})
+
+        try:
+            if os.path.exists(tmp_csv_path):
+                os.remove(tmp_csv_path)
+        except Exception:
+            pass
         job_id = res.get("job_id")
         st.success(f"Import avviato. job_id = {job_id}")
 
