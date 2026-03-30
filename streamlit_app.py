@@ -746,6 +746,7 @@ if role == "administrator":
 
         with st.spinner("Invio CSV al backend (job async)"):
             files = {"file": ("elenchi.csv", csv_bytes, "text/csv")}
+            st.write(f"Dimensione CSV generato: {len(csv_bytes) / (1024 * 1024):.2f} MB")
             res = api_post_multipart("/admin/import", token, files=files, data={"mode": mode})
 
         job_id = res.get("job_id")
