@@ -482,10 +482,10 @@ with st.sidebar:
     )
 
     eta_map = {
-        "≤ 20": "LE20",
-        "21–40": "21_40",
-        "41–60": "41_60",
-        "> 60": "GT60",
+        "≤ 20": "≤20",
+        "21–40": "21-40",
+        "41–60": "41-60",
+        "> 60": ">60",
     }
     selected_eta_codes = [eta_map[x] for x in selected_eta_labels]
     
@@ -504,12 +504,12 @@ with st.sidebar:
     )
 
     gg_map = {
-        "10 o meno": "LE10",
-        "11–50": "11_50",
-        "51–100": "51_100",
-        "101–150": "101_150",
-        "151–180": "151_180",
-        "Più di 180": "GT180",
+        "10 o meno": "≤10",
+        "11–50": "11-50",
+        "51–100": "51-100",
+        "101–150": "101-150",
+        "151–180": "151-180",
+        "Più di 180": ">180",
     }
     selected_gg_codes = [gg_map[x] for x in selected_gg_labels]
 
@@ -615,16 +615,15 @@ if role == "administrator":
 
             # 1) colonne attese dal backend (COPY elenchi(...))
             REQUIRED_COLS = [
-                "cognome_nome",
                 "prov_nascita",
                 "comune_nascita",
-                "anno_nascita_yy",
+                "fascia_eta",
                 "sesso",
+                "fascia_gg",
                 "gg_tot",
                 "regione",
                 "provincia",
                 "comune",
-                "anno_inserimento",
             ]
 
             # 2) check colonne (fallisce subito se manca qualcosa)
@@ -636,6 +635,7 @@ if role == "administrator":
             # 3) tieni solo colonne attese + ordine garantito
             df_x = df_x[REQUIRED_COLS].copy()
 
+
             # 4) normalizzazione: vuoti/nan/NULL -> None
             def norm_cell(v):
                 if v is None:
@@ -645,12 +645,15 @@ if role == "administrator":
                     return None
                 return s
 
+
             for c in REQUIRED_COLS:
                 df_x[c] = df_x[c].map(norm_cell)
 
-            # 5) anno inserimento = anno corrente (se mancante o sporco)
+            # 5) anno inserimento impostato da script: anno corrente - 1
             current_year = datetime.now().year
-            df_x["anno_inserimento"] = current_year - 1
+            #df_x["anno_inserimento"] = current_year - 1
+            df_x["anno_inserimento"] = 2024
+
 
             # 6) sesso normalizzato a M/F
             def norm_sex(v):
@@ -663,17 +666,82 @@ if role == "administrator":
                     return "F"
                 return None
 
-            df_x["sesso"] = df_x["sesso"].map(norm_sex)
 
-            # 7) campi numerici (se non convertibili -> None)
-            df_x["anno_nascita_yy"] = pd.to_numeric(df_x["anno_nascita_yy"], errors="coerce")
+            # 7) fascia età normalizzata ai soli valori ammessi dal DB
+            def norm_fascia_eta(v):
+                if not v:
+                    return None
+                s = str(v).strip().replace(" ", "")
+                mapping = {
+                    "≤20": "≤20",
+                    "21-40": "21-40",
+                    "41-60": "41-60",
+                    ">60": ">60",
+                }
+                return mapping.get(s)
+
+
+            # 8) fascia giornate normalizzata ai soli valori ammessi dal DB
+            def norm_fascia_gg(v):
+                if not v:
+                    return None
+                s = str(v).strip().replace(" ", "")
+                mapping = {
+                    "≤10": "≤10",
+                    "11-50": "11-50",
+                    "51-100": "51-100",
+                    "101-150": "101-150",
+                    "151-180": "151-180",
+                    ">180": ">180",
+                }
+                return mapping.get(s)
+
+
+            df_x["sesso"] = df_x["sesso"].map(norm_sex)
+            df_x["fascia_eta"] = df_x["fascia_eta"].map(norm_fascia_eta)
+            df_x["fascia_gg"] = df_x["fascia_gg"].map(norm_fascia_gg)
+
+            invalid_eta = df_x["fascia_eta"].isna().sum()
+            invalid_gg = df_x["fascia_gg"].isna().sum()
+            invalid_sex = df_x["sesso"].isna().sum()
+
+            if invalid_eta > 0:
+                st.error(f"Excel non valido: trovati {invalid_eta} valori non riconosciuti in 'fascia_eta'.")
+                st.stop()
+
+            if invalid_gg > 0:
+                st.error(f"Excel non valido: trovati {invalid_gg} valori non riconosciuti in 'fascia_gg'.")
+                st.stop()
+
+            if invalid_sex > 0:
+                st.error(f"Excel non valido: trovati {invalid_sex} valori non riconosciuti in 'sesso'.")
+                st.stop()
+
+            # 9) campi numerici
             df_x["gg_tot"] = pd.to_numeric(df_x["gg_tot"], errors="coerce")
 
-            # 8) uppercasing su campi territoriali
+            # 10) uppercasing su campi territoriali
             for c in ["prov_nascita", "regione", "provincia", "comune", "comune_nascita"]:
                 df_x[c] = df_x[c].map(lambda v: v.strip().upper() if isinstance(v, str) and v.strip() else None)
 
-            # 9) CSV: None -> stringa vuota, così il backend può mappare a NULL (a seconda del COPY)
+            # 11) validazione finale minima
+            invalid_eta = df_x["fascia_eta"].isna().sum()
+            invalid_gg = df_x["fascia_gg"].isna().sum()
+            invalid_sex = df_x["sesso"].isna().sum()
+
+            if invalid_eta > 0:
+                st.error(f"Excel non valido: trovati {invalid_eta} valori non riconosciuti in 'fascia_eta'.")
+                st.stop()
+
+            if invalid_gg > 0:
+                st.error(f"Excel non valido: trovati {invalid_gg} valori non riconosciuti in 'fascia_gg'.")
+                st.stop()
+
+            if invalid_sex > 0:
+                st.error(f"Excel non valido: trovati {invalid_sex} valori non riconosciuti in 'sesso'.")
+                st.stop()
+
+            # 12) CSV: None -> stringa vuota
             csv_bytes = df_x.to_csv(index=False).encode("utf-8")
 
         with st.spinner("Invio CSV al backend (job async)"):
