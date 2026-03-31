@@ -5,10 +5,11 @@ import streamlit as st
 import plotly.express as px
 import os
 import extra_streamlit_components as stx
+import tempfile
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from datetime import datetime
+from datetime import datetime, UTC, timedelta
 
 st.set_page_config(page_title="Gestionale Elenchi", layout="wide")
 cookie_manager = stx.CookieManager()
@@ -38,7 +39,7 @@ div[data-testid="stElementToolbarButton"] > button {
 """
 
 
-AAPI_BASE = os.getenv("API_BASE", "http://localhost:8000")
+API_BASE = os.getenv("API_BASE", "http://localhost:8000")
 
 # =========================
 # TOKEN HANDLING ROBUSTO
@@ -52,7 +53,7 @@ if "token" in st.query_params:
         cookie_manager.set(
             COOKIE_TOKEN_KEY,
             incoming,
-            expires_at=datetime.utcnow() + pd.Timedelta(hours=12),
+            expires_at=datetime.now(UTC) + timedelta(hours=12),
             key="set_auth_token_cookie",
         )
 
@@ -629,156 +630,16 @@ if role == "administrator":
     mode = st.selectbox("Modalità import", ["replace"], index=0)
 
     if up is not None and st.button("Importa nel database"):
-        with st.spinner("Conversione Excel → CSV"):
-            df_x = pd.read_excel(up, dtype=str)
+        with st.spinner("Invio file Excel al backend (job async)"):
+            files = {
+                "file": (
+                    up.name,
+                    up.getvalue(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            }
+            res = api_post_multipart("/admin/import", token, files=files, data={"mode": mode})
 
-            # 1) colonne attese dal backend (COPY elenchi(...))
-            REQUIRED_COLS = [
-                "prov_nascita",
-                "comune_nascita",
-                "fascia_eta",
-                "sesso",
-                "fascia_gg",
-                "gg_tot",
-                "regione",
-                "provincia",
-                "comune",
-            ]
-
-            # 2) check colonne (fallisce subito se manca qualcosa)
-            missing = [c for c in REQUIRED_COLS if c not in df_x.columns]
-            if missing:
-                st.error(f"Excel non valido. Colonne mancanti: {missing}")
-                st.stop()
-
-            # 3) tieni solo colonne attese + ordine garantito
-            df_x = df_x[REQUIRED_COLS].copy()
-
-
-            # 4) normalizzazione: vuoti/nan/NULL -> None
-            def norm_cell(v):
-                if v is None:
-                    return None
-                s = str(v).strip()
-                if s == "" or s.lower() in ("nan", "none", "null"):
-                    return None
-                return s
-
-
-            for c in REQUIRED_COLS:
-                df_x[c] = df_x[c].map(norm_cell)
-
-            # 5) anno inserimento impostato da script: anno corrente - 1
-            current_year = datetime.now().year
-            #df_x["anno_inserimento"] = current_year - 1
-            df_x["anno_inserimento"] = 2024
-
-
-            # 6) sesso normalizzato a M/F
-            def norm_sex(v):
-                if not v:
-                    return None
-                s = str(v).strip().upper()
-                if s in ("M", "MASCHIO", "MALE"):
-                    return "M"
-                if s in ("F", "FEMMINA", "FEMALE"):
-                    return "F"
-                return None
-
-
-            # 7) fascia età normalizzata ai soli valori ammessi dal DB
-            def norm_fascia_eta(v):
-                if not v:
-                    return None
-                s = str(v).strip().replace(" ", "")
-                mapping = {
-                    "≤20": "≤20",
-                    "21-40": "21-40",
-                    "41-60": "41-60",
-                    ">60": ">60",
-                }
-                return mapping.get(s)
-
-
-            # 8) fascia giornate normalizzata ai soli valori ammessi dal DB
-            def norm_fascia_gg(v):
-                if not v:
-                    return None
-                s = str(v).strip().replace(" ", "")
-                mapping = {
-                    "≤10": "≤10",
-                    "11-50": "11-50",
-                    "51-100": "51-100",
-                    "101-150": "101-150",
-                    "151-180": "151-180",
-                    ">180": ">180",
-                }
-                return mapping.get(s)
-
-
-            df_x["sesso"] = df_x["sesso"].map(norm_sex)
-            df_x["fascia_eta"] = df_x["fascia_eta"].map(norm_fascia_eta)
-            df_x["fascia_gg"] = df_x["fascia_gg"].map(norm_fascia_gg)
-
-            invalid_eta = df_x["fascia_eta"].isna().sum()
-            invalid_gg = df_x["fascia_gg"].isna().sum()
-            invalid_sex = df_x["sesso"].isna().sum()
-
-            if invalid_eta > 0:
-                st.error(f"Excel non valido: trovati {invalid_eta} valori non riconosciuti in 'fascia_eta'.")
-                st.stop()
-
-            if invalid_gg > 0:
-                st.error(f"Excel non valido: trovati {invalid_gg} valori non riconosciuti in 'fascia_gg'.")
-                st.stop()
-
-            if invalid_sex > 0:
-                st.error(f"Excel non valido: trovati {invalid_sex} valori non riconosciuti in 'sesso'.")
-                st.stop()
-
-            # 9) campi numerici
-            df_x["gg_tot"] = pd.to_numeric(df_x["gg_tot"], errors="coerce")
-
-            # 10) uppercasing su campi territoriali
-            for c in ["prov_nascita", "regione", "provincia", "comune", "comune_nascita"]:
-                df_x[c] = df_x[c].map(lambda v: v.strip().upper() if isinstance(v, str) and v.strip() else None)
-
-            # 11) validazione finale minima
-            invalid_eta = df_x["fascia_eta"].isna().sum()
-            invalid_gg = df_x["fascia_gg"].isna().sum()
-            invalid_sex = df_x["sesso"].isna().sum()
-
-            if invalid_eta > 0:
-                st.error(f"Excel non valido: trovati {invalid_eta} valori non riconosciuti in 'fascia_eta'.")
-                st.stop()
-
-            if invalid_gg > 0:
-                st.error(f"Excel non valido: trovati {invalid_gg} valori non riconosciuti in 'fascia_gg'.")
-                st.stop()
-
-            if invalid_sex > 0:
-                st.error(f"Excel non valido: trovati {invalid_sex} valori non riconosciuti in 'sesso'.")
-                st.stop()
-
-            # 12) CSV: None -> stringa vuota
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_csv:
-                tmp_csv_path = tmp_csv.name
-
-            df_x.to_csv(tmp_csv_path, index=False, encoding="utf-8")
-
-        with st.spinner("Invio CSV al backend (job async)"):
-            file_size_mb = os.path.getsize(tmp_csv_path) / (1024 * 1024)
-            st.write(f"Dimensione CSV generato: {file_size_mb:.2f} MB")
-
-            with open(tmp_csv_path, "rb") as f:
-                files = {"file": ("elenchi.csv", f, "text/csv")}
-                res = api_post_multipart("/admin/import", token, files=files, data={"mode": mode})
-
-        try:
-            if os.path.exists(tmp_csv_path):
-                os.remove(tmp_csv_path)
-        except Exception:
-            pass
         job_id = res.get("job_id")
         st.success(f"Import avviato. job_id = {job_id}")
 
