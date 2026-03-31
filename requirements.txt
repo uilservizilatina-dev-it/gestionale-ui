@@ -9,3 +9,4 @@ plotly
 streamlit
 requests
 urllib3
+extra-streamlit-components

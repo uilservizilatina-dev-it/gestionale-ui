@@ -4,12 +4,15 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import os
+import extra_streamlit_components as stx
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from datetime import datetime
 
 st.set_page_config(page_title="Gestionale Elenchi", layout="wide")
+cookie_manager = stx.CookieManager()
+COOKIE_TOKEN_KEY = "union_auth_token"
 
 HIDE_DF_TOOLBAR_CSS = """
 <style>
@@ -35,29 +38,39 @@ div[data-testid="stElementToolbarButton"] > button {
 """
 
 
-API_BASE = os.getenv("API_BASE", "http://localhost:8000")
+AAPI_BASE = os.getenv("API_BASE", "http://localhost:8000")
+
 # =========================
-# TOKEN HANDLING SICURO
+# TOKEN HANDLING ROBUSTO
 # =========================
 
-# 1) Se arriva da URL, salvalo in session_state
+# 1) Se arriva da URL, salvalo sia in session_state che in cookie
 if "token" in st.query_params:
     incoming = (st.query_params.get("token", "") or "").strip()
     if incoming:
         st.session_state["auth_token"] = incoming
+        cookie_manager.set(
+            COOKIE_TOKEN_KEY,
+            incoming,
+            expires_at=datetime.utcnow() + pd.Timedelta(hours=12),
+            key="set_auth_token_cookie",
+        )
 
     # 2) Rimuovi subito il token dalla URL
     st.query_params.clear()
 
-# 3) Usa sempre il token dalla sessione
+# 3) Se manca dalla sessione, prova a recuperarlo dal cookie
+if "auth_token" not in st.session_state or not st.session_state.get("auth_token"):
+    cookie_token = cookie_manager.get(COOKIE_TOKEN_KEY)
+    if cookie_token:
+        st.session_state["auth_token"] = cookie_token
+
+# 4) Usa sempre il token dalla sessione
 token = st.session_state.get("auth_token", "")
 
 if not token:
     st.error("Sessione non valida. Accedi dal portale.")
     st.stop()
-
-st.title("Gestionale Elenchi")
-st.caption("Consultazione elenchi – accesso riservato (WordPress)")
 
 # =========================
 # HTTP session + API helpers
@@ -108,7 +121,9 @@ def api_get(path: str, tok: str, params=None):
         st.stop()
 
     if r.status_code == 401:
-        st.error("Token non valido o scaduto.")
+        st.session_state.pop("auth_token", None)
+        cookie_manager.delete(COOKIE_TOKEN_KEY, key="delete_auth_cookie_get")
+        st.error("Token non valido o scaduto. Accedi nuovamente dal portale.")
         st.stop()
     if r.status_code >= 400:
         st.error(f"Errore API {r.status_code}: {r.text[:800]}")
@@ -135,7 +150,9 @@ def api_get_raw(path: str, tok: str, params=None) -> bytes:
         st.stop()
 
     if r.status_code == 401:
-        st.error("Token non valido o scaduto.")
+        st.session_state.pop("auth_token", None)
+        cookie_manager.delete(COOKIE_TOKEN_KEY, key="delete_auth_cookie_raw")
+        st.error("Token non valido o scaduto. Accedi nuovamente dal portale.")
         st.stop()
     if r.status_code >= 400:
         st.error(f"Errore API {r.status_code}: {r.text[:800]}")
@@ -164,7 +181,9 @@ def api_post_multipart(path: str, tok: str, files=None, data=None):
         st.stop()
 
     if r.status_code == 401:
-        st.error("Token non valido o scaduto.")
+        st.session_state.pop("auth_token", None)
+        cookie_manager.delete(COOKIE_TOKEN_KEY, key="delete_auth_cookie_post")
+        st.error("Token non valido o scaduto. Accedi nuovamente dal portale.")
         st.stop()
     if r.status_code >= 400:
         st.error(f"Errore API {r.status_code}: {r.text[:800]}")
