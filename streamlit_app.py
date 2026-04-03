@@ -410,24 +410,31 @@ with st.sidebar:
         selected_region = [r for (r, _) in selected_region_items]
 
     else:
-        if scope_level == "regione":
-            # multi-regione fissa (da WordPress)
+        if scope_level == "all":
+            # Utente nazionale non admin: nessun filtro regione imposto
+            selected_region = []
+            st.selectbox(
+                "Regione",
+                options=["Tutte le regioni"],
+                index=0,
+                disabled=True,
+            )
+
+        elif scope_level == "regione":
             selected_region = scope_values
             labels = {r: c for (r, c) in reg_items}
             fixed = [f"{r} ({labels.get(r, 0):,})" for r in selected_region]
             st.multiselect("Regione", options=fixed, default=fixed, disabled=True)
+
         elif scope_level == "provincia" or scope_level == "comune":
-            # Regione derivata dallo scope (province/comuni) -> mostrala fissa
-            inferred_regions = [r for (r, _) in reg_items]  # già filtrate dal backend in base allo scope
+            inferred_regions = [r for (r, _) in reg_items]
             reg_label = ", ".join(inferred_regions) if inferred_regions else (user_region or "N/A")
             st.caption(f"Regione {reg_label} - Vincolata dal tuo profilo.")
-            #st.selectbox("Regione", options=[f"{reg_label} - Vincolata dal tuo profilo."], index=0, disabled=True)
-
-            # come filtro NON serve (scope già restringe)
             selected_region = []
+
         else:
             # fallback legacy
-            selected_region = [user_region]
+            selected_region = [user_region] if user_region else []
             count_map = {r: c for (r, c) in reg_items}
             label = f"{user_region} ({count_map.get(user_region, 0):,})" if user_region else "N/A"
             st.selectbox("Regione", options=[label], index=0, disabled=True)
