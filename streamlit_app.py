@@ -73,6 +73,8 @@ if not token:
     st.error("Sessione non valida. Accedi dal portale.")
     st.stop()
 
+class AuthExpiredError(Exception):
+    pass
 # =========================
 # HTTP session + API helpers
 # =========================
@@ -122,10 +124,7 @@ def api_get(path: str, tok: str, params=None):
         st.stop()
 
     if r.status_code == 401:
-        st.session_state.pop("auth_token", None)
-        cookie_manager.delete(COOKIE_TOKEN_KEY, key="delete_auth_cookie_get")
-        st.error("Token non valido o scaduto. Accedi nuovamente dal portale.")
-        st.stop()
+        raise AuthExpiredError("Token non valido o scaduto")
     if r.status_code >= 400:
         st.error(f"Errore API {r.status_code}: {r.text[:800]}")
         st.stop()
@@ -151,10 +150,7 @@ def api_get_raw(path: str, tok: str, params=None) -> bytes:
         st.stop()
 
     if r.status_code == 401:
-        st.session_state.pop("auth_token", None)
-        cookie_manager.delete(COOKIE_TOKEN_KEY, key="delete_auth_cookie_raw")
-        st.error("Token non valido o scaduto. Accedi nuovamente dal portale.")
-        st.stop()
+        raise AuthExpiredError("Token non valido o scaduto")
     if r.status_code >= 400:
         st.error(f"Errore API {r.status_code}: {r.text[:800]}")
         st.stop()
@@ -182,14 +178,27 @@ def api_post_multipart(path: str, tok: str, files=None, data=None):
         st.stop()
 
     if r.status_code == 401:
-        st.session_state.pop("auth_token", None)
-        cookie_manager.delete(COOKIE_TOKEN_KEY, key="delete_auth_cookie_post")
-        st.error("Token non valido o scaduto. Accedi nuovamente dal portale.")
-        st.stop()
+        raise AuthExpiredError("Token non valido o scaduto")
     if r.status_code >= 400:
         st.error(f"Errore API {r.status_code}: {r.text[:800]}")
         st.stop()
     return r.json()
+
+def force_logout(message: str):
+    st.session_state.pop("auth_token", None)
+
+    existing = cookie_manager.get(COOKIE_TOKEN_KEY)
+    if existing:
+        cookie_manager.delete(COOKIE_TOKEN_KEY, key="delete_auth_cookie_safe")
+
+    st.error(message)
+    st.stop()
+
+def run_or_logout(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except AuthExpiredError:
+        force_logout("Token non valido o scaduto. Accedi nuovamente dal portale.")
 
 @st.cache_data(ttl=600, show_spinner=False)
 def get_anni_inserimento(tok: str):
@@ -234,11 +243,10 @@ if not api_healthcheck():
 # =========================
 # WHOAMI (cached)
 # =========================
-@st.cache_data(ttl=600, show_spinner=False)
-def cached_whoami(tok: str):
+def load_whoami(tok: str):
     return api_get("/auth/whoami", tok)
 
-who = cached_whoami(token)
+who = run_or_logout(load_whoami, token)
 role = (who.get("role") or "").lower()
 regione = who.get("regione")
 
@@ -396,7 +404,7 @@ with st.sidebar:
     st.header("Filtri")
 
     # 6) Regione: filtro regione
-    reg_items = get_regioni(token)
+    reg_items = run_or_logout(get_regioni, token)
 
     if is_admin:
         selected_region_items = st.multiselect(
@@ -411,14 +419,15 @@ with st.sidebar:
 
     else:
         if scope_level == "all":
-            # Utente nazionale non admin: nessun filtro regione imposto
-            selected_region = []
-            st.selectbox(
+            selected_region_items = st.multiselect(
                 "Regione",
-                options=["Tutte le regioni"],
-                index=0,
-                disabled=True,
+                options=reg_items,
+                default=[],
+                key="regione_sel_items",
+                on_change=on_region_change,
+                format_func=lambda t: f"{t[0]} ({t[1]:,})" if t[1] else f"{t[0]}",
             )
+            selected_region = [r for (r, _) in selected_region_items]
 
         elif scope_level == "regione":
             selected_region = scope_values
@@ -433,7 +442,6 @@ with st.sidebar:
             selected_region = []
 
         else:
-            # fallback legacy
             selected_region = [user_region] if user_region else []
             count_map = {r: c for (r, c) in reg_items}
             label = f"{user_region} ({count_map.get(user_region, 0):,})" if user_region else "N/A"
@@ -441,7 +449,7 @@ with st.sidebar:
 
     # 1) Residenza: Province (con count) - DIPENDE dalla Regione selezionata
     region_key = tuple(sorted([r.upper() for r in (selected_region or [])]))
-    prov_items = get_province_with_counts(token, region_key)
+    prov_items = run_or_logout(get_province_with_counts, token, region_key)
 
     if (not is_admin) and scope_level == "comune":
         # Provincia derivata dai comuni consentiti -> mostrala fissa, niente filtro
@@ -488,7 +496,7 @@ with st.sidebar:
         if selected_province:
             seen = {}
             for p in selected_province:
-                for c, n in get_comuni_for_prov_with_counts(token, p):
+                for c, n in run_or_logout(get_comuni_for_prov_with_counts, token, p):
                     seen[c] = seen.get(c, 0) + int(n)
             comuni_items = sorted(seen.items(), key=lambda x: x[0])
 
@@ -568,7 +576,7 @@ with st.sidebar:
 
         # carico i comuni per EE
         seen = {}
-        for c, n in get_comuni_nascita_for_prov_with_counts(token, "EE"):
+        for c, n in run_or_logout(get_comuni_nascita_for_prov_with_counts, token, "EE"):
             seen[c] = seen.get(c, 0) + int(n)
         com_n_items = sorted(seen.items(), key=lambda x: x[0])
 
@@ -582,7 +590,7 @@ with st.sidebar:
 
     else:
         # Tutti o Italiano: filtri nascita normali (provincia -> comuni)
-        prov_n_items = get_province_nascita_with_counts(token)
+        prov_n_items = run_or_logout(get_province_nascita_with_counts, token)
         # Se Italiano, rimuovi EE dalle opzioni selezionabili
         if nat_choice == "Italiano":
             prov_n_items = [t for t in prov_n_items if (t[0] or "").upper() != "EE"]
@@ -599,7 +607,7 @@ with st.sidebar:
         if selected_prov_nasc:
             seen = {}
             for p in selected_prov_nasc:
-                for c, n in get_comuni_nascita_for_prov_with_counts(token, p):
+                for c, n in run_or_logout(get_comuni_nascita_for_prov_with_counts, token, p):
                     seen[c] = seen.get(c, 0) + int(n)
             com_n_items = sorted(seen.items(), key=lambda x: x[0])
 
@@ -614,7 +622,7 @@ with st.sidebar:
     st.divider()
     
     # 5) Anno inserimento: filtro per anno inserimento
-    anni_items = get_anni_inserimento(token)
+    anni_items = run_or_logout(get_anni_inserimento, token)
     latest_year_item = [anni_items[0]] if anni_items else []
 
     selected_anni_items = st.multiselect(
@@ -685,7 +693,8 @@ if role == "administrator":
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
             }
-            res = api_post_multipart(
+            res = run_or_logout(
+                api_post_multipart,
                 f"/admin/import?mode={mode}&anno_inserimento={int(anno_import)}",
                 token,
                 files=files,
@@ -702,7 +711,7 @@ if role == "administrator":
             status_box = st.empty()
 
             for _ in range(120):
-                js = api_get("/admin/import/status", token, params={"job_id": job_id})
+                js = run_or_logout(api_get, "/admin/import/status", token, {"job_id": job_id})
                 status = js.get("status")
                 inserted = js.get("inserted_rows")
                 err = js.get("error")
@@ -776,7 +785,7 @@ if selected_comuni:
 # Totale righe aggiornato (senza limit/offset)
 # count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
 count_params = dict(params)
-count_info = cached_count(token, count_params)
+count_info = run_or_logout(cached_count, token, count_params)
 total_rows = count_info["total"]
 total_gg = count_info["total_gg"]
 
@@ -842,10 +851,10 @@ ETA_COLOR_MAP = {
 st.divider()
 st.subheader("Statistiche")
 
-sex_stats = get_stats_sex(token, params)
-nat_stats = get_stats_nat(token, params)
-gg_js = get_gg_fasce(token, params)
-eta_js = get_eta_fasce(token, params)
+sex_stats = run_or_logout(get_stats_sex, token, params)
+nat_stats = run_or_logout(get_stats_nat, token, params)
+gg_js = run_or_logout(get_gg_fasce, token, params)
+eta_js = run_or_logout(get_eta_fasce, token, params)
 
 # =========================
 # RIGA 1: sesso
@@ -1171,11 +1180,12 @@ trend_choice = st.selectbox(
 )
 
 cfg = trend_options[trend_choice]
-trend_js = get_trend_annuale(
+trend_js = run_or_logout(
+    get_trend_annuale,
     token,
-    metrica=cfg["metrica"],
-    apply_geo=cfg["apply_geo"],
-    geo_params=geo_params,
+    cfg["metrica"],
+    cfg["apply_geo"],
+    geo_params,
 )
 
 trend_items = trend_js.get("items", [])
