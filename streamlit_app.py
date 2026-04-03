@@ -331,6 +331,18 @@ def get_stats_nat(tok: str, params: dict):
     # p.pop("offset", None)
     return api_get("/auth/stats-nat", tok, params=p)
 
+@st.cache_data(ttl=60, show_spinner=False)
+def get_trend_annuale(tok: str, metrica: str, apply_geo: bool, geo_params: dict):
+    params = {"metrica": metrica, "apply_geo": apply_geo}
+    if apply_geo:
+        if geo_params.get("regione"):
+            params["regione"] = geo_params["regione"]
+        if geo_params.get("provincia"):
+            params["provincia"] = geo_params["provincia"]
+        if geo_params.get("comune"):
+            params["comune"] = geo_params["comune"]
+    return api_get("/auth/trend-annuale", tok, params=params)
+
 # =========================
 # COUNT totale (cached)
 # =========================
@@ -596,12 +608,15 @@ with st.sidebar:
     
     # 5) Anno inserimento: filtro per anno inserimento
     anni_items = get_anni_inserimento(token)
+    latest_year_item = [anni_items[0]] if anni_items else []
+
     selected_anni_items = st.multiselect(
         "Anno inserimento",
         options=anni_items,
-        default=[],
+        default=latest_year_item,
         format_func=lambda t: f"{t[0]} ({t[1]:,})",
     )
+
     selected_anni = [a for (a, _) in selected_anni_items]
     
 # =========================
@@ -627,7 +642,32 @@ if role == "administrator":
     st.subheader("Upload Excel (solo Admin)")
 
     up = st.file_uploader("Carica file Excel (.xlsx)", type=["xlsx"])
-    mode = st.selectbox("Modalità import", ["replace"], index=0)
+
+    current_year = datetime.now(UTC).year
+    anno_import = st.number_input(
+        "Anno di inserimento del file",
+        min_value=2000,
+        max_value=2100,
+        value=current_year,
+        step=1,
+    )
+
+    mode = st.selectbox(
+        "Modalità import",
+        ["replace_year", "append", "replace"],
+        index=0,
+        format_func=lambda x: {
+            "replace_year": "Sostituisci solo questo anno",
+            "append": "Aggiungi senza cancellare",
+            "replace": "Sostituisci tutto il database",
+        }[x]
+    )
+
+    if mode == "append":
+        st.warning(
+            "Attenzione: 'append' aggiunge righe senza rimuovere eventuali duplicati dello stesso anno. "
+            "Per un aggiornamento correttivo annuale è più sicuro usare 'Sostituisci solo questo anno'."
+        )
 
     if up is not None and st.button("Importa nel database"):
         with st.spinner("Invio file Excel al backend (job async)"):
@@ -638,7 +678,14 @@ if role == "administrator":
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
             }
-            res = api_post_multipart("/admin/import", token, files=files, data={"mode": mode})
+            res = api_post_multipart(
+                f"/admin/import?mode={mode}&anno_inserimento={int(anno_import)}",
+                token,
+                files=files,
+                data=None,
+            )
+
+        st.cache_data.clear()
 
         job_id = res.get("job_id")
         st.success(f"Import avviato. job_id = {job_id}")
@@ -710,6 +757,14 @@ if selected_eta_codes:
 
 if selected_gg_codes:
     params["gg_fascia"] = selected_gg_codes
+
+geo_params = {}
+if selected_region:
+    geo_params["regione"] = selected_region
+if selected_province:
+    geo_params["provincia"] = selected_province
+if selected_comuni:
+    geo_params["comune"] = selected_comuni
 
 # Totale righe aggiornato (senza limit/offset)
 # count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
@@ -1045,6 +1100,125 @@ with c6:
         )
 
         st.plotly_chart(fig_eta, width="stretch")
+
+st.divider()
+st.subheader("Confronto annuale")
+
+trend_options = {
+    "Totale braccianti negli anni (nazionale)": {
+        "metrica": "tot_braccianti",
+        "apply_geo": False,
+        "title": "Totale braccianti negli anni",
+    },
+    "Totale giornate lavorate negli anni (nazionale)": {
+        "metrica": "tot_gg",
+        "apply_geo": False,
+        "title": "Totale giornate lavorate negli anni",
+    },
+    "Totale braccianti negli anni (con filtri geografici)": {
+        "metrica": "tot_braccianti",
+        "apply_geo": True,
+        "title": "Totale braccianti negli anni — filtri geografici",
+    },
+    "Totale giornate lavorate negli anni (con filtri geografici)": {
+        "metrica": "tot_gg",
+        "apply_geo": True,
+        "title": "Totale giornate lavorate negli anni — filtri geografici",
+    },
+    "Maschi e femmine negli anni": {
+        "metrica": "sex_count",
+        "apply_geo": True,
+        "title": "Lavoratori per sesso negli anni",
+    },
+    "Giornate lavorate per sesso negli anni": {
+        "metrica": "sex_gg",
+        "apply_geo": True,
+        "title": "Giornate lavorate per sesso negli anni",
+    },
+    "Italiani ed esteri negli anni": {
+        "metrica": "nat_count",
+        "apply_geo": True,
+        "title": "Lavoratori italiani vs esteri negli anni",
+    },
+    "Giornate lavorate italiani vs esteri negli anni": {
+        "metrica": "nat_gg",
+        "apply_geo": True,
+        "title": "Giornate lavorate italiani vs esteri negli anni",
+    },
+    "Fasce d'età negli anni": {
+        "metrica": "eta_count",
+        "apply_geo": True,
+        "title": "Distribuzione fasce d'età negli anni",
+    },
+    "Fasce giornate lavorate negli anni": {
+        "metrica": "ggfasce_count",
+        "apply_geo": True,
+        "title": "Distribuzione giornate lavorate negli anni",
+    },
+}
+
+trend_choice = st.selectbox(
+    "Seleziona il confronto",
+    options=list(trend_options.keys()),
+    index=0,
+)
+
+cfg = trend_options[trend_choice]
+trend_js = get_trend_annuale(
+    token,
+    metrica=cfg["metrica"],
+    apply_geo=cfg["apply_geo"],
+    geo_params=geo_params,
+)
+
+trend_items = trend_js.get("items", [])
+df_trend = pd.DataFrame(trend_items)
+
+if df_trend.empty:
+    st.caption("Nessun dato disponibile per il confronto selezionato.")
+else:
+    color_map = {
+        "Maschi": UILA_AZURE,
+        "Femmine": UILA_BLUE,
+        "Italiani": UILA_GREEN,
+        "Esteri": UILA_BLUE,
+        "≤ 20": UILA_AZURE,
+        "21–40": UILA_GREEN_LIGHT,
+        "41–60": UILA_GREEN,
+        "> 60": UILA_RED,
+        "10 o meno": UILA_AZURE,
+        "11–50": "#5FA6DD",
+        "51–100": UILA_BLUE,
+        "101–150": "#4F8F3A",
+        "151–180": UILA_GREEN,
+        "Più di 180": UILA_RED,
+        "Totale braccianti": UILA_BLUE,
+        "Totale giornate": UILA_GREEN,
+    }
+
+    fig_trend = px.line(
+        df_trend,
+        x="anno",
+        y="valore",
+        color="serie",
+        markers=True,
+        title=cfg["title"],
+        color_discrete_map=color_map,
+    )
+
+    fig_trend.update_layout(
+        xaxis_title="Anno",
+        yaxis_title="Valore",
+        legend_title="Serie",
+        hovermode="x unified",
+    )
+
+    st.plotly_chart(fig_trend, width="stretch")
+
+    if cfg["apply_geo"]:
+        st.caption("Questo grafico considera solo i filtri Regione / Provincia / Comune.")
+    else:
+        st.caption("Questo grafico ignora tutti i filtri e mostra il dato nazionale.")
     
 # st.divider()        
 # st.subheader("Tabella")
